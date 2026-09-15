@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, Blueprint
-from database import get_connection
-from mysql.connector import Error
+from database import db
+from models.products import Product
+from sqlalchemy.exc import IntegrityError
 
 products_bp = Blueprint("products", __name__)
 
@@ -16,47 +17,25 @@ def get_products():
         in: query
         type: string
         required: false
-        description: Search products by name
-        example: Pen
 
       - name: product_id
         in: query
         type: integer
         required: false
-        description: Filter by product ID
-        example: 5
 
       - name: min_stock
         in: query
         type: integer
         required: false
-        description: Filter products with stock greater than or equal to this value
-        example: 10
 
       - name: max_stock
         in: query
         type: integer
         required: false
-        description: Filter products with stock less than or equal to this value
-        example: 20
 
     responses:
       200:
         description: A list of products
-        schema:
-          type: array
-          items:
-            type: object
-            properties:
-              product_id:
-                type: integer
-              name:
-                type: string
-              stock:
-                type: integer
-              is_active:
-                type: integer
-
       400:
         description: Invalid filter value
     """
@@ -107,45 +86,38 @@ def get_products():
                 "message": "min_stock cannot be greater than max_stock"
             }), 400
 
-    conditions = []
-    values = []
+    # Start with all products
+    query = Product.query
 
     # Name search
     if search:
-        conditions.append("name LIKE %s")
-        values.append(f"%{search}%")
+        query = query.filter(Product.name.like(f"%{search}%"))
 
     # Product ID filter
     if product_id is not None:
-        conditions.append("product_id = %s")
-        values.append(product_id)
+        query = query.filter(Product.product_id == product_id)
 
     # Minimum stock filter
     if min_stock is not None:
-        conditions.append("stock >= %s")
-        values.append(min_stock)
+        query = query.filter(Product.stock >= min_stock)
 
     # Maximum stock filter
     if max_stock is not None:
-        conditions.append("stock <= %s")
-        values.append(max_stock)
+        query = query.filter(Product.stock <= max_stock)
 
-    # Build query
-    query = "SELECT * FROM products"
+    # Execute the query
+    products = query.all()
 
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
-    query += ";"
-
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
-
-    cursor.execute(query, tuple(values))
-    result = cursor.fetchall()
-
-    cursor.close()
-    connection.close()
+    # Convert Product objects to JSON
+    result = [
+        {
+            "product_id": product.product_id,
+            "name": product.name,
+            "stock": product.stock,
+            "is_active": product.is_active
+        }
+        for product in products
+    ]
 
     return jsonify(result)
 
@@ -167,21 +139,15 @@ def get_product(id):
       404:
         description: Product not found
     """
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
-    query = "SELECT name, stock FROM products WHERE product_id = %s;"
-    cursor.execute(query, (id,))
-    result = cursor.fetchone()
+    product = Product.query.get(id)
 
-    # If product doesn't exist
-    if result is None:
-      cursor.close()
-      connection.close()
-      return jsonify({"message": "Product not found"}), 404
-    
-    cursor.close()
-    connection.close()
-    return jsonify(result)
+    if product is None:
+        return jsonify({"message": "Product not found"}), 404
+
+    return jsonify({
+        "name": product.name,
+        "stock": product.stock
+    })
 
 # add product
 @products_bp.route("/products", methods=["POST"])
@@ -225,27 +191,23 @@ def add_product():
 
     name = name.strip()
     if name=="":
-      cursor.close()
-      connection.close()
       return jsonify({"message": "Name is required"}), 400
 
     if not isinstance(stock, int) or stock < 0:
       return jsonify({"message": "Stock must be a non-negative integer"}), 400
 
-    query = "INSERT INTO products (name, stock, is_active) VALUES (%s, %s, 1);"
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
-    try:
-        cursor.execute(query, (name, stock,))
-        connection.commit()
-    except Error:
-        connection.rollback()
-        cursor.close()
-        connection.close()
-        return jsonify({"message": "Database error"}), 500
+    product = Product(
+      name=name,
+      stock=stock,
+      is_active=True
+    )
 
-    cursor.close()
-    connection.close()
+    try:
+        db.session.add(product)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"message": "Database error"}), 500
 
     return jsonify({'message': 'Data added successfully!'}), 201
 
@@ -291,71 +253,52 @@ def update_product(id):
     data = request.get_json()
     if data is None:
         return jsonify({"message": "Request body is required"}), 400
+    
     if not isinstance(data, dict):
         return jsonify({"message": "Request body must be a JSON object"}), 400
+    
     name = data.get('name') 
     stock = data.get('stock')
     is_active = data.get('is_active')
 
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
-    # Get current product
-    query = "SELECT name, stock, is_active FROM products WHERE product_id = %s;"
-    cursor.execute(query, (id,))
-    current_product = cursor.fetchone()
+    product = Product.query.get(id)
 
     # If product doesn't exist
-    if current_product is None:
-        cursor.close()
-        connection.close()
+    if product is None:
         return jsonify({"message": "Product not found"}), 404
     
     # Keep old value if it wasn't provided
     if name is None:
-        name = current_product["name"]
+        name = product.name
     else:
       if not isinstance(name, str):
-            cursor.close()
-            connection.close()
             return jsonify({"message": "Name must be a string"}), 400
+      
       name = name.strip()
       if name=="":
-        cursor.close()
-        connection.close()
         return jsonify({"message": "Name is required"}), 400
       
     if stock is None:
-        stock = current_product["stock"]
+        stock = product.stock
     else:
        if not isinstance(stock, int) or stock < 0:
-          cursor.close()
-          connection.close()
           return jsonify({"message": "Stock must be a non-negative integer"}), 400
 
     if is_active is None:
-       is_active = current_product["is_active"]
+       is_active = product.is_active
     if is_active is not None and (not isinstance(is_active, int) or is_active not in (0, 1)):
-      cursor.close()
-      connection.close()
       return jsonify({"message": "is_active must be 0 or 1"}), 400
     
     # Update
-    query = """
-        UPDATE products
-        SET name = %s, stock = %s, is_active = %s
-        WHERE product_id = %s;
-    """
+    product.name = name
+    product.stock = stock
+    product.is_active = is_active
+
     try:
-        cursor.execute(query, (name, stock, is_active, id))
-        connection.commit()
-    except Error:
-        connection.rollback()
-        cursor.close()
-        connection.close()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
         return jsonify({"message": "Database error"}), 500
-    
-    cursor.close()
-    connection.close()
 
     return jsonify({'message': 'Data updated successfully!'}), 200
 
@@ -380,38 +323,24 @@ def delete_product(id):
       409:
         description: Product cannot be deleted because it is being used in existing records
     """
-    query = "DELETE FROM products WHERE product_id = %s;"
-
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
+    product = Product.query.get(id)
+    if product is None:
+      return jsonify({"message": "Product not found"}), 404
 
     try:
-        cursor.execute(query, (id,))
-        connection.commit()
+        db.session.delete(product)
+        db.session.commit()
+    except IntegrityError as e:
+      db.session.rollback()
 
-    except Error as e:
-        connection.rollback()
+      if e.orig.errno == 1451:
+          return jsonify({
+              "message": "Product cannot be deleted because it is being used in existing records. Set is_active to 0 instead."
+          }), 409
 
-        if e.errno == 1451:
-            cursor.close()
-            connection.close()
-            return jsonify({
-                "message": "Product cannot be deleted because it is being used in existing records. Set is_active to 0 instead."
-            }), 409
-        cursor.close()
-        connection.close()
-        return jsonify({
-            "message": "Database error"
-        }), 500
-
-    # check if there were any rows affected by the SQL query (if 0 rows were deleted)
-    if cursor.rowcount == 0:
-        cursor.close()
-        connection.close()
-        return jsonify({"message": "Product not found"}), 404
-    
-    cursor.close()
-    connection.close()
+      return jsonify({
+          "message": "Database error"
+      }), 500
 
     return jsonify({"message": "Product deleted successfully!"}), 200
 

@@ -2,6 +2,12 @@ from flask import Flask, jsonify, request
 from database import get_connection
 from flasgger import Swagger
 from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+
+from database import db
+
+from models.products import Product
 
 from routes.products import products_bp
 from routes.customers import customers_bp
@@ -9,8 +15,19 @@ from routes.price_list import price_list_bp
 from routes.price_list_items import price_list_items_bp
 from routes.receipts import receipts_bp
 
+load_dotenv()
+
 app = Flask(__name__)
 CORS(app)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = (
+    f"mysql+mysqlconnector://"
+    f"{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+    f"@{os.getenv('DB_HOST')}/{os.getenv('DB_NAME')}"
+)
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db.init_app(app)
 
 swagger = Swagger(app)
 
@@ -24,6 +41,18 @@ app.register_blueprint(receipts_bp)
 def home():
     return "Sales Management API"
 
+@app.route("/test-products")
+def test_products():
+    products = Product.query.all()
+    return jsonify([
+        {
+            "product_id": p.product_id,
+            "name": p.name,
+            "stock": p.stock,
+            "is_active": p.is_active
+        }
+        for p in products
+    ])
 
 # Receipt Item API
 @app.route("/receipt item", methods=["GET"])

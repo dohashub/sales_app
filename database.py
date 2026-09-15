@@ -1,6 +1,8 @@
 import mysql.connector
 from mysql.connector import Error
+from flask_sqlalchemy import SQLAlchemy
 
+db=SQLAlchemy()
 # Create a new database connection
 def get_connection():
     try:
