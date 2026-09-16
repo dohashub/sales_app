@@ -1,6 +1,9 @@
 from flask import jsonify, request, Blueprint
-from database import get_connection
-from mysql.connector import Error
+from database import db
+from sqlalchemy.exc import IntegrityError
+from models.price_list_items import PriceListItem
+from models.price_list import PriceList
+from models.products import Product
 
 price_list_items_bp = Blueprint("price_list_items", __name__)
 
@@ -29,15 +32,17 @@ responses:
           price:
             type: integer
 """
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
+    price_list_items = PriceListItem.query.all()
 
-    query = "SELECT * FROM `price list items`"
-    cursor.execute(query)
-    result = cursor.fetchall()
-
-    cursor.close()
-    connection.close()
+    result =[
+        {
+            "id" : item.id,
+            "price_list_id" : item.price_list_id,
+            "product_id" : item.product_id,
+            "price" : item.price
+        }
+        for item in price_list_items
+    ]
 
     return jsonify(result)
 
@@ -59,20 +64,19 @@ responses:
   404:
     description: Price list item not found
 """
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
+    item = PriceListItem.query.get(id)
 
-    query = "SELECT price_list_id, product_id, price FROM `price list items` where id=%s;"
-    cursor.execute(query, (id,))
-    result = cursor.fetchone()
-
-    cursor.close()
-    connection.close()
-
-    if result is None:
+    if item is None:
       return jsonify({"message": "Price List Item not found"}), 404
 
-    return jsonify(result)
+    return jsonify(
+      {
+        "id" : item.id,
+        "price_list_id" : item.price_list_id,
+        "product_id" : item.product_id,
+        "price" : item.price   
+      }
+    )
 
 
 # add price list item
@@ -108,17 +112,20 @@ responses:
     description: Product already exists in the price list
 """
     data = request.get_json()
+    # Check request body
     if data is None:
         return jsonify({"message": "Request body is required"}), 400
     if not isinstance(data, dict):
         return jsonify({"message": "Request body must be a JSON object"}), 400
+    
     product_id = data.get('product_id')
     price_list_id = data.get('price_list_id')
     price = data.get('price')
 
+    # Check required fields
     if product_id is None or price_list_id is None or price is None :
       return jsonify({"message": "product_id, price_list_id and price are required"}), 400 
-
+    # Validate required fields
     if not isinstance(price_list_id, int) or price_list_id <= 0:
       return jsonify({"message": "price_list_id must be a positive integer"}), 400
     if not isinstance(product_id, int) or product_id <= 0:
@@ -126,55 +133,33 @@ responses:
     if not isinstance(price, int) or price < 0:
       return jsonify({"message": "price must be a non-negative integer"}), 400
 
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
-
     # check if price list exists
-    price_list_query = "SELECT price_list_id FROM `price list` WHERE price_list_id = %s;"
-    cursor.execute(price_list_query, (price_list_id,))
-    result = cursor.fetchone()
-    if result is None:
-        cursor.close()
-        connection.close()
+    price_list = PriceList.query.get(price_list_id)
+    if price_list is None:
         return jsonify({"message": "Price list not found"}), 404
 
     # check if product exists
-    product_query = "SELECT product_id FROM `products` WHERE product_id = %s;"
-    cursor.execute(product_query, (product_id,))
-    result = cursor.fetchone()
-
-    if result is None:
-        cursor.close()
-        connection.close()
+    product = Product.query.get(product_id)
+    if product is None:
         return jsonify({"message": "Product not found"}), 404
 
-
     # check if product already exists in price list
-    query2='''
-        SELECT price
-        FROM `price list items`
-        WHERE price_list_id = %s
-        AND product_id = %s;
-    '''
-    cursor.execute(query2, (price_list_id, product_id,))
-    result=cursor.fetchone()
-    if result:
-       cursor.close()
-       connection.close()
+    item = PriceListItem.query.filter(PriceListItem.product_id==product_id, PriceListItem.price_list_id==price_list_id).first()
+    if item:
        return jsonify({"message": " This Product already exists in the price list"}), 409
 
-    query = "INSERT INTO `price list items` (product_id, price_list_id, price) VALUES (%s, %s, %s);"
+    price_list_item = PriceListItem(
+        product_id=product_id,
+        price_list_id=price_list_id, 
+        price = price
+    )
     try:
-        cursor.execute(query, (product_id, price_list_id, price))
-        connection.commit()
-    except Error:
-        connection.rollback()
-        cursor.close()
-        connection.close()
+        db.session.add(price_list_item)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
         return jsonify({"message": "Database error"}), 500
-
-    cursor.close()
-    connection.close()
+    
     return jsonify({'message': 'Price List Item added successfully!'}), 201
 
 
@@ -208,80 +193,41 @@ responses:
     description: Price list item not found
 """
     data = request.get_json()
+    # Check request body
     if data is None:
         return jsonify({"message": "Request body is required"}), 400
 
     if not isinstance(data, dict):
         return jsonify({"message": "Request body must be a JSON object"}), 400
+    
     #product_id = data.get('product_id')
     #price_list_id = data.get('price_list_id')
     price = data.get('price')
 
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
-    # Get current price list item
-    query = "SELECT product_id, price_list_id, price FROM `price list items` WHERE id = %s;"
-    cursor.execute(query, (id,))
-    current_list = cursor.fetchone()
+    # Get price list item
+    price_list_item = PriceListItem.query.get(id)
 
     # If item doesn't exist
-    if current_list is None:
-        cursor.close()
-        connection.close()
+    if price_list_item is None:
         return jsonify({"message": "price list item not found"}), 404
-    '''
-    # Keep old value if it wasn't provided
-    if product_id is None:
-        product_id = current_list["product_id"]
-    else:
-      if not isinstance(product_id, int) or product_id <= 0:
-          return jsonify({"message": "product_id must be a positive integer"}), 400
-      # check if product exists
-      product_query = "SELECT product_id FROM `products` WHERE product_id = %s;"
-      cursor.execute(product_query, (product_id,))
-      result = cursor.fetchone()
-      if result is None:
-          return jsonify({"message": "Product not found"}), 404
-      
-    if price_list_id is None:
-        price_list_id = current_list["price_list_id"]
-    else:
-      if not isinstance(price_list_id, int) or price_list_id <= 0:
-          return jsonify({"message": "price_list_id must be a positive integer"}), 400
-      # check if price list exists
-      price_list_query = "SELECT price_list_id FROM `price list` WHERE price_list_id = %s;"
-      cursor.execute(price_list_query, (price_list_id,))
-      result = cursor.fetchone()
-      if result is None:
-          return jsonify({"message": "Price list not found"}), 404
-      '''
+    
 
     if price is None:
-      price = current_list["price"]
+      price = price_list_item.price
     else:
+      # validate price
       if not isinstance(price, int) or price < 0:
-            cursor.close()
-            connection.close()
             return jsonify({"message": "price must be a non-negative integer"}), 400
       
-    
     # Update
-    query = """
-        UPDATE `price list items`
-        SET price = %s
-        WHERE id = %s;
-    """
+    price_list_item.price = price
+
     try:
-        cursor.execute(query, (price, id))
-        connection.commit()
-    except Error:
-        connection.rollback()
-        cursor.close()
-        connection.close()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
         return jsonify({"message": "Database error"}), 500
-    
-    cursor.close()
-    connection.close()
+
     return jsonify({'message': 'Data updated successfully!'}), 200
 
 
@@ -305,34 +251,22 @@ responses:
   409:
     description: Price list item cannot be deleted because it is being used in existing records
 """
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
-    query = "DELETE FROM `price list items` WHERE id = %s;"
-
+    price_list_item = PriceListItem.query.get(id)
+    if price_list_item is None:
+        return jsonify({"message": "price list item not found"}), 404
     try:
-        cursor.execute(query, (id,))
-        connection.commit()
-    except Error as e:
-            connection.rollback()
+        db.session.delete(price_list_item)
+        db.session.commit()
+    except IntegrityError as e:
+            db.session.rollback()
     
-            if e.errno == 1451:
-                cursor.close()
-                connection.close()
+            if e.orig.errno == 1451:
                 return jsonify({
                     "message": "item cannot be deleted because it is being used in existing records."
                 }), 409
-            cursor.close()
-            connection.close()
+            
             return jsonify({
                 "message": "Database error"
             }), 500
 
-    # check if there were any rows affected by the SQL query (if 0 rows were deleted)
-    if cursor.rowcount == 0:
-        cursor.close()
-        connection.close()
-        return jsonify({"message": "Price List Item not found"}), 404
-    
-    cursor.close()
-    connection.close()
     return jsonify({"message": "Price List Item deleted successfully!"}), 200
