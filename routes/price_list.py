@@ -1,16 +1,14 @@
 from flask import jsonify, request, Blueprint
-from database import db
-from models.price_list import PriceList
-from sqlalchemy.exc import IntegrityError
+from services.price_lists_service import get_all_price_lists, get_price_list, add_price_list, update_price_list, delete_price_list
 
 price_list_bp = Blueprint("price_list", __name__)
 
-# Price List API
+# --- Price List API
 
 #get all price lists
 @price_list_bp.route("/price-list", methods=["GET"])
 def get_price_lists():
-    """
+  """
 Get all price lists
 ---
 responses:
@@ -26,23 +24,15 @@ responses:
           price_list_type:
             type: string
 """
-    price_lists = PriceList.query.all()
+  result, status_code = get_all_price_lists()
 
-    result =[
-        {
-            "price_list_id" : price_list.price_list_id,
-            "price_list_type" : price_list.price_list_type
-        }
-        for price_list in price_lists
-    ]
-
-    return jsonify(result)
+  return jsonify(result), status_code
 
 
 # get one price list
 @price_list_bp.route("/price-list/<id>", methods=["GET"])
-def get_price_list(id):
-    """
+def get_price_list_route(id):
+  """
 Get a price list by ID
 ---
 parameters:
@@ -57,22 +47,15 @@ responses:
   404:
     description: Price list not found
 """
-    price_list = PriceList.query.get(id)
+  result, status_code = get_price_list(id)
 
-    # If price list doesn't exist
-    if price_list is None:
-      return jsonify({"message": "Price List not found"}), 404
-
-    return jsonify({
-    "price_list_id": price_list.price_list_id,
-    "price_list_type": price_list.price_list_type
-    })
+  return jsonify(result), status_code
 
 
 # add price list
 @price_list_bp.route("/price-list", methods=["POST"])
-def add_price_list():
-    """
+def add_price_list_route():
+  """
 Add a new price list
 ---
 parameters:
@@ -91,39 +74,24 @@ responses:
   400:
     description: Invalid price list data
 """
-    data = request.get_json()
-    # Check request body
-    if data is None:
-            return jsonify({"message": "Request body is required"}), 400
-    if not isinstance(data, dict):
-        return jsonify({"message": "Request body must be a JSON object"}), 400
-    
-    price_list_type = data.get('price_list_type')
-    # Check & Validate required fields
-    if price_list_type is None:
-      return jsonify({"message": "price_list_type is required"}), 400 
-    if not isinstance(price_list_type, str):
-        return jsonify({"message": "price_list_type must be a string"}), 400
-    price_list_type = price_list_type.strip()
-    if price_list_type=="":
-      return jsonify({"message": "price_list_type is required"}), 400
+  data = request.get_json()
+  # Check request body
+  if data is None:
+          return jsonify({"message": "Request body is required"}), 400
+  if not isinstance(data, dict):
+      return jsonify({"message": "Request body must be a JSON object"}), 400
+  
+  price_list_type = data.get('price_list_type')
 
-    # create price list object
-    price_list= PriceList(price_list_type=price_list_type)
-    try:
-        db.session.add(price_list)
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        return jsonify({"message": "Database error"}), 500
+  result, status_code = add_price_list(price_list_type)
 
-    return jsonify({'message': 'Data added successfully!'}), 201
+  return jsonify(result), status_code
 
 
 # update price list
 @price_list_bp.route("/price-list/<id>", methods=["PUT"])
-def update_price_list(id):
-    """
+def update_price_list_route(id):
+  """
 Update a price list
 ---
 parameters:
@@ -149,49 +117,24 @@ responses:
   404:
     description: Price list not found
 """
-    data = request.get_json()
-    # Check request body
-    if data is None:
-        return jsonify({"message": "Request body is required"}), 400
-    if not isinstance(data, dict):
-        return jsonify({"message": "Request body must be a JSON object"}), 400
-    
-    price_list_type = data.get('price_list_type')
+  data = request.get_json()
+  # Check request body
+  if data is None:
+      return jsonify({"message": "Request body is required"}), 400
+  if not isinstance(data, dict):
+      return jsonify({"message": "Request body must be a JSON object"}), 400
+  
+  price_list_type = data.get('price_list_type')
 
-    # Get price list
-    price_list = PriceList.query.get(id)
+  result, status_code = update_price_list(id, price_list_type)
 
-    # If list doesn't exist
-    if price_list is None:
-        return jsonify({"message": "Price List not found"}), 404
-    
-    # Keep old value if it wasn't provided
-    if price_list_type is None:
-        price_list_type = price_list.price_list_type
-    else:
-      # Validate price list type
-      if not isinstance(price_list_type, str):
-            return jsonify({"message": "price_list_type must be a string"}), 400
-      price_list_type = price_list_type.strip()
-      if price_list_type=="":
-        return jsonify({"message": "price_list_type is required"}), 400
-    
-    # Update
-    price_list.price_list_type = price_list_type
-
-    try:
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        return jsonify({"message": "Database error"}), 500
-
-    return jsonify({'message': 'Data updated successfully!'}), 200
+  return jsonify(result), status_code
 
 
 # delete price list
 @price_list_bp.route("/price-list/<id>", methods=["DELETE"])
-def delete_price_list(id):
-    """
+def delete_price_list_route(id):
+  """
 Delete a price list
 ---
 parameters:
@@ -208,22 +151,6 @@ responses:
   409:
     description: Price list cannot be deleted because it is being used in existing records
 """
-    price_list = PriceList.query.get(id)
-    if price_list is None:
-        return jsonify({"message": "Price List not found"}), 404
+  result, status_code = delete_price_list(id)
 
-    try:
-        db.session.delete(price_list)
-        db.session.commit()
-    except IntegrityError as e:
-            db.session.rollback()
-    
-            if e.orig.errno == 1451:
-                return jsonify({
-                    "message": "list cannot be deleted because it is being used in existing records."
-                }), 409
-            return jsonify({
-                "message": "Database error"
-            }), 500
-
-    return jsonify({"message": "Price list deleted successfully!"}), 200
+  return jsonify(result), status_code
