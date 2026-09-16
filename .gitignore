@@ -18,3 +18,5 @@ sales_frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+flask_test.py

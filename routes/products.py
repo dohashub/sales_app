@@ -180,12 +180,16 @@ def add_product():
         return jsonify({"message": "Request body is required"}), 400
     if not isinstance(data, dict):
         return jsonify({"message": "Request body must be a JSON object"}), 400
+    
     name = data.get('name')
     stock = data.get('stock')
     #is_active= data.get('is_active')
 
+    # Check required fields
     if name is None or stock is None :
       return jsonify({"message": "Name and Stock are required"}), 400 
+
+    # Validate name
     if not isinstance(name, str):
         return jsonify({"message": "Name must be a string"}), 400
 
@@ -193,9 +197,11 @@ def add_product():
     if name=="":
       return jsonify({"message": "Name is required"}), 400
 
+    # Validate stock
     if not isinstance(stock, int) or stock < 0:
       return jsonify({"message": "Stock must be a non-negative integer"}), 400
 
+    # Create product object
     product = Product(
       name=name,
       stock=stock,
@@ -210,7 +216,6 @@ def add_product():
         return jsonify({"message": "Database error"}), 500
 
     return jsonify({'message': 'Data added successfully!'}), 201
-
 
 
 # update product
@@ -251,6 +256,7 @@ def update_product(id):
         description: Product not found
     """
     data = request.get_json()
+    # Check request body
     if data is None:
         return jsonify({"message": "Request body is required"}), 400
     
@@ -261,6 +267,7 @@ def update_product(id):
     stock = data.get('stock')
     is_active = data.get('is_active')
 
+    # get product
     product = Product.query.get(id)
 
     # If product doesn't exist
@@ -271,6 +278,7 @@ def update_product(id):
     if name is None:
         name = product.name
     else:
+      # Validate name
       if not isinstance(name, str):
             return jsonify({"message": "Name must be a string"}), 400
       
@@ -281,6 +289,7 @@ def update_product(id):
     if stock is None:
         stock = product.stock
     else:
+       # Validate stock
        if not isinstance(stock, int) or stock < 0:
           return jsonify({"message": "Stock must be a non-negative integer"}), 400
 

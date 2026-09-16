@@ -41,19 +41,6 @@ app.register_blueprint(receipts_bp)
 def home():
     return "Sales Management API"
 
-@app.route("/test-products")
-def test_products():
-    products = Product.query.all()
-    return jsonify([
-        {
-            "product_id": p.product_id,
-            "name": p.name,
-            "stock": p.stock,
-            "is_active": p.is_active
-        }
-        for p in products
-    ])
-
 # Receipt Item API
 @app.route("/receipt item", methods=["GET"])
 def get_receipt_item():
