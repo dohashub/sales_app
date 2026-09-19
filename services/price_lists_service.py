@@ -1,5 +1,7 @@
 from database import db
 from models.price_list import PriceList
+from models.customers import Customer
+from models.price_list_items import PriceListItem
 from sqlalchemy.exc import IntegrityError
 
 def get_all_price_lists():
@@ -23,8 +25,8 @@ def get_price_list(price_list_id):
     return ({"message": "Price List not found"}), 404
 
   return{
-  "price_list_id": price_list.price_list_id,
-  "price_list_type": price_list.price_list_type
+    "price_list_id": price_list.price_list_id,
+    "price_list_type": price_list.price_list_type
   }, 200
 
 def add_price_list(price_list_type):
@@ -79,23 +81,61 @@ def update_price_list(price_list_id, price_list_type):
   return ({'message': 'Data updated successfully!'}), 200
 
 
-def delete_price_list(price_list_id):
-  price_list = PriceList.query.get(price_list_id)
-  if price_list is None:
-    return ({"message": "Price List not found"}), 404
+def delete_price_list(price_list_id, replacement_price_list_id):
+  # Validate replacement ID
+  if replacement_price_list_id is None:
+      return {"message": "replacement_price_list_id is required"}, 400
 
   try:
-    db.session.delete(price_list)
-    db.session.commit()
+      replacement_price_list_id = int(replacement_price_list_id)
+  except ValueError:
+      return {"message": "replacement_price_list_id must be an integer"}, 400
+
+  if replacement_price_list_id <= 0:
+      return {"message": "replacement_price_list_id must be a positive integer"}, 400
+
+  if price_list_id == replacement_price_list_id:
+      return {
+          "message": "Replacement price list must be different from the price list being deleted"
+      }, 409
+
+  # Get price list
+  price_list = PriceList.query.get(price_list_id)
+
+  if price_list is None:
+      return {"message": "Price List not found"}, 404
+
+  # Get replacement price list
+  replacement_price_list = PriceList.query.get(replacement_price_list_id)
+
+  if replacement_price_list is None:
+      return {"message": "Replacement price list not found"}, 404
+
+  # Reassign customers
+  customers = Customer.query.filter(
+      Customer.price_list_id == price_list_id
+  ).all()
+
+  for customer in customers:
+      customer.price_list_id = replacement_price_list_id
+
+  # Delete price list items
+  price_list_items = PriceListItem.query.filter(PriceListItem.price_list_id == price_list_id).all()
+
+  for item in price_list_items:
+      db.session.delete(item)
+
+  try:
+      db.session.delete(price_list)
+      db.session.commit()
   except IntegrityError as e:
-    db.session.rollback()
+      db.session.rollback()
 
-    if e.orig.errno == 1451:
-        return ({
-            "message": "list cannot be deleted because it is being used in existing records."
-        }), 409
-    return ({
-        "message": "Database error"
-    }), 500
+      if e.orig.errno == 1451:
+          return {
+              "message": "Price list cannot be deleted because it is being used in existing records."
+          }, 409
 
-  return ({"message": "Price list deleted successfully!"}), 200
+      return {"message": "Database error"}, 500
+
+  return {"message": "Price list deleted successfully!"}, 200

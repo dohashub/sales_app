@@ -5,7 +5,8 @@ import React, { useState, useEffect, useCallback } from "react";
    focus rings, and the search box all pick up the same soft blue.
 --------------------------------------------------------------------- */
 const FONT_MONO = "'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace";
-const FONT_SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+const FONT_SANS =
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
 const C = {
   bg: "#FFFFFF",
@@ -50,14 +51,19 @@ function useList(apiBase, path, active) {
     fetch(`${apiBase}${path}`)
       .then(async (res) => {
         const body = await res.json().catch(() => null);
-        if (!res.ok) throw new Error((body && body.message) || `Couldn't load ${path} (${res.status})`);
+        if (!res.ok)
+          throw new Error(
+            (body && body.message) || `Couldn't load ${path} (${res.status})`,
+          );
         setData(Array.isArray(body) ? body : []);
       })
       .catch((err) => {
         // Surface network-level failures ("Failed to fetch") distinctly from
         // API error responses, since the fix for each is different.
         if (err instanceof TypeError) {
-          setError(`Couldn't reach the server at ${apiBase}. Check that the API is running and reachable.`);
+          setError(
+            `Couldn't reach the server at ${apiBase}. Check that the API is running and reachable.`,
+          );
         } else {
           setError(err.message);
         }
@@ -82,7 +88,9 @@ async function send(apiBase, path, method, body) {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch (err) {
-    throw new Error(`Couldn't reach the server at ${apiBase}. Check that the API is running and reachable.`);
+    throw new Error(
+      `Couldn't reach the server at ${apiBase}. Check that the API is running and reachable.`,
+    );
   }
   let parsed = null;
   try {
@@ -91,7 +99,9 @@ async function send(apiBase, path, method, body) {
     /* no body */
   }
   if (!res.ok) {
-    throw new Error((parsed && parsed.message) || `Request failed (${res.status})`);
+    throw new Error(
+      (parsed && parsed.message) || `Request failed (${res.status})`,
+    );
   }
   return parsed;
 }
@@ -144,8 +154,17 @@ function Banner({ tone = "error", children, onDismiss }) {
 
 function Field({ label, children }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontFamily: FONT_SANS }}>
-      <span style={{ fontSize: 11.5, color: C.inkFaint, letterSpacing: 0.2 }}>{label}</span>
+    <label
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        fontFamily: FONT_SANS,
+      }}
+    >
+      <span style={{ fontSize: 11.5, color: C.inkFaint, letterSpacing: 0.2 }}>
+        {label}
+      </span>
       {children}
     </label>
   );
@@ -163,12 +182,22 @@ const inputStyle = {
 };
 
 function TextInput({ className, ...props }) {
-  return <input {...props} className={`app-input ${className || ""}`} style={{ ...inputStyle, ...(props.style || {}) }} />;
+  return (
+    <input
+      {...props}
+      className={`app-input ${className || ""}`}
+      style={{ ...inputStyle, ...(props.style || {}) }}
+    />
+  );
 }
 
 function Select({ children, className, ...props }) {
   return (
-    <select {...props} className={`app-input ${className || ""}`} style={{ ...inputStyle, ...(props.style || {}) }}>
+    <select
+      {...props}
+      className={`app-input ${className || ""}`}
+      style={{ ...inputStyle, ...(props.style || {}) }}
+    >
       {children}
     </select>
   );
@@ -187,10 +216,20 @@ function Btn({ variant = "primary", style, ...props }) {
   };
   const variants = {
     primary: { background: C.blue, color: "#fff" },
-    ghost: { background: "transparent", color: C.ink, border: `1px solid ${C.line}` },
-    danger: { background: "transparent", color: C.danger, border: `1px solid ${C.danger}55` },
+    ghost: {
+      background: "transparent",
+      color: C.ink,
+      border: `1px solid ${C.line}`,
+    },
+    danger: {
+      background: "transparent",
+      color: C.danger,
+      border: `1px solid ${C.danger}55`,
+    },
   };
-  return <button {...props} style={{ ...base, ...variants[variant], ...style }} />;
+  return (
+    <button {...props} style={{ ...base, ...variants[variant], ...style }} />
+  );
 }
 
 /* Simple client-side search box: filters the already-loaded list
@@ -211,7 +250,16 @@ function SearchInput({ value, onChange, placeholder }) {
           pointerEvents: "none",
         }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
@@ -259,8 +307,21 @@ function SearchInput({ value, onChange, placeholder }) {
 
 function Toolbar({ search, onSearch, placeholder, shown, total }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 12, flexWrap: "wrap" }}>
-      <SearchInput value={search} onChange={onSearch} placeholder={placeholder} />
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 10,
+        gap: 12,
+        flexWrap: "wrap",
+      }}
+    >
+      <SearchInput
+        value={search}
+        onChange={onSearch}
+        placeholder={placeholder}
+      />
       <span style={{ fontSize: 12, color: C.inkFaint, fontFamily: FONT_SANS }}>
         {shown} of {total}
       </span>
@@ -278,8 +339,22 @@ function normalizeColumn(c) {
 function Table({ columns, children, empty }) {
   const cols = columns.map(normalizeColumn);
   return (
-    <div style={{ overflowX: "auto", border: `1px solid ${C.line}`, borderRadius: 6 }}>
-      <table className="app-table" style={{ width: "100%", borderCollapse: "collapse", fontFamily: FONT_SANS, tableLayout: "fixed" }}>
+    <div
+      style={{
+        overflowX: "auto",
+        border: `1px solid ${C.line}`,
+        borderRadius: 6,
+      }}
+    >
+      <table
+        className="app-table"
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontFamily: FONT_SANS,
+          tableLayout: "fixed",
+        }}
+      >
         <thead>
           <tr>
             {cols.map((c) => (
@@ -304,7 +379,15 @@ function Table({ columns, children, empty }) {
         <tbody>{children}</tbody>
       </table>
       {empty && (
-        <div style={{ padding: "22px 14px", textAlign: "center", color: C.inkFaint, fontSize: 13, fontFamily: FONT_SANS }}>
+        <div
+          style={{
+            padding: "22px 14px",
+            textAlign: "center",
+            color: C.inkFaint,
+            fontSize: 13,
+            fontFamily: FONT_SANS,
+          }}
+        >
           {empty}
         </div>
       )}
@@ -336,8 +419,29 @@ function Panel({ title, subtitle, children }) {
   return (
     <div>
       <div style={{ marginBottom: 18 }}>
-        <h2 style={{ fontFamily: FONT_SANS, fontWeight: 600, fontSize: 19, margin: 0, color: C.ink }}>{title}</h2>
-        {subtitle && <p style={{ margin: "4px 0 0", color: C.inkFaint, fontSize: 13, fontFamily: FONT_SANS }}>{subtitle}</p>}
+        <h2
+          style={{
+            fontFamily: FONT_SANS,
+            fontWeight: 600,
+            fontSize: 19,
+            margin: 0,
+            color: C.ink,
+          }}
+        >
+          {title}
+        </h2>
+        {subtitle && (
+          <p
+            style={{
+              margin: "4px 0 0",
+              color: C.inkFaint,
+              fontSize: 13,
+              fontFamily: FONT_SANS,
+            }}
+          >
+            {subtitle}
+          </p>
+        )}
       </div>
       {children}
     </div>
@@ -368,14 +472,24 @@ function money(n) {
 function matches(search, ...fields) {
   const q = search.trim().toLowerCase();
   if (!q) return true;
-  return fields.some((f) => String(f ?? "").toLowerCase().includes(q));
+  return fields.some((f) =>
+    String(f ?? "")
+      .toLowerCase()
+      .includes(q),
+  );
 }
 
 /* ---------------------------------------------------------------------
    Customers
 --------------------------------------------------------------------- */
 function CustomersPanel({ apiBase, active }) {
-  const { data: customers, loading, error, reload, setError } = useList(apiBase, "/customers", active);
+  const {
+    data: customers,
+    loading,
+    error,
+    reload,
+    setError,
+  } = useList(apiBase, "/customers", active);
   const { data: priceLists } = useList(apiBase, "/price-list", active);
 
   const [form, setForm] = useState({ name: "", price_list_id: "" });
@@ -390,7 +504,9 @@ function CustomersPanel({ apiBase, active }) {
     return pl ? pl.price_list_type : `#${id}`;
   };
 
-  const filtered = customers.filter((c) => matches(search, c.customer_id, c.name, priceListLabel(c.price_list_id)));
+  const filtered = customers.filter((c) =>
+    matches(search, c.customer_id, c.name, priceListLabel(c.price_list_id)),
+  );
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -445,12 +561,27 @@ function CustomersPanel({ apiBase, active }) {
   }
 
   return (
-    <Panel title="Customers" subtitle="Who you sell to, and the price list each one shops from.">
-      <Banner tone="error" onDismiss={() => setError(null)}>{error}</Banner>
-      <Banner tone="ok" onDismiss={() => setNotice(null)}>{notice}</Banner>
+    <Panel
+      title="Customers"
+      subtitle="Who you sell to, and the price list each one shops from."
+    >
+      <Banner tone="error" onDismiss={() => setError(null)}>
+        {error}
+      </Banner>
+      <Banner tone="ok" onDismiss={() => setNotice(null)}>
+        {notice}
+      </Banner>
 
       <SectionCard>
-        <form onSubmit={handleAdd} style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <form
+          onSubmit={handleAdd}
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "flex-end",
+            flexWrap: "wrap",
+          }}
+        >
           <Field label="Name">
             <TextInput
               required
@@ -463,19 +594,33 @@ function CustomersPanel({ apiBase, active }) {
             <Select
               required
               value={form.price_list_id}
-              onChange={(e) => setForm({ ...form, price_list_id: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, price_list_id: e.target.value })
+              }
             >
-              <option value="" disabled>Choose one</option>
+              <option value="" disabled>
+                Choose one
+              </option>
               {priceLists.map((p) => (
-                <option key={p.price_list_id} value={p.price_list_id}>{p.price_list_type}</option>
+                <option key={p.price_list_id} value={p.price_list_id}>
+                  {p.price_list_type}
+                </option>
               ))}
             </Select>
           </Field>
-          <Btn type="submit" disabled={busy}>Add customer</Btn>
+          <Btn type="submit" disabled={busy}>
+            Add customer
+          </Btn>
         </form>
       </SectionCard>
 
-      <Toolbar search={search} onSearch={setSearch} placeholder="Search customers..." shown={filtered.length} total={customers.length} />
+      <Toolbar
+        search={search}
+        onSearch={setSearch}
+        placeholder="Search customers..."
+        shown={filtered.length}
+        total={customers.length}
+      />
 
       <Table
         columns={[
@@ -484,25 +629,48 @@ function CustomersPanel({ apiBase, active }) {
           { label: "Price list", align: "left" },
           { label: "", align: "right" },
         ]}
-        empty={!loading && customers.length === 0 ? "No customers yet — add one above." : (!loading && filtered.length === 0 ? "No customers match your search." : null)}
+        empty={
+          !loading && customers.length === 0
+            ? "No customers yet — add one above."
+            : !loading && filtered.length === 0
+              ? "No customers match your search."
+              : null
+        }
       >
         {filtered.map((c) => {
           const isEditing = editingId === c.customer_id;
           return (
             <tr key={c.customer_id}>
-              <Td mono align="right">{c.customer_id}</Td>
+              <Td mono align="right">
+                {c.customer_id}
+              </Td>
               <Td>
                 {isEditing ? (
-                  <TextInput value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                  <TextInput
+                    value={editForm.name}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, name: e.target.value })
+                    }
+                  />
                 ) : (
                   c.name
                 )}
               </Td>
               <Td>
                 {isEditing ? (
-                  <Select value={editForm.price_list_id} onChange={(e) => setEditForm({ ...editForm, price_list_id: e.target.value })}>
+                  <Select
+                    value={editForm.price_list_id}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        price_list_id: e.target.value,
+                      })
+                    }
+                  >
                     {priceLists.map((p) => (
-                      <option key={p.price_list_id} value={p.price_list_id}>{p.price_list_type}</option>
+                      <option key={p.price_list_id} value={p.price_list_id}>
+                        {p.price_list_type}
+                      </option>
                     ))}
                   </Select>
                 ) : (
@@ -511,14 +679,41 @@ function CustomersPanel({ apiBase, active }) {
               </Td>
               <Td align="right" width={160}>
                 {isEditing ? (
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <Btn variant="primary" onClick={() => saveEdit(c.customer_id)} disabled={busy}>Save</Btn>
-                    <Btn variant="ghost" onClick={() => setEditingId(null)}>Cancel</Btn>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <Btn
+                      variant="primary"
+                      onClick={() => saveEdit(c.customer_id)}
+                      disabled={busy}
+                    >
+                      Save
+                    </Btn>
+                    <Btn variant="ghost" onClick={() => setEditingId(null)}>
+                      Cancel
+                    </Btn>
                   </div>
                 ) : (
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <Btn variant="ghost" onClick={() => startEdit(c)}>Edit</Btn>
-                    <Btn variant="danger" onClick={() => handleDelete(c.customer_id)}>Delete</Btn>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <Btn variant="ghost" onClick={() => startEdit(c)}>
+                      Edit
+                    </Btn>
+                    <Btn
+                      variant="danger"
+                      onClick={() => handleDelete(c.customer_id)}
+                    >
+                      Delete
+                    </Btn>
                   </div>
                 )}
               </Td>
@@ -534,21 +729,36 @@ function CustomersPanel({ apiBase, active }) {
    Products
 --------------------------------------------------------------------- */
 function ProductsPanel({ apiBase, active }) {
-  const { data: products, loading, error, reload, setError } = useList(apiBase, "/products", active);
+  const {
+    data: products,
+    loading,
+    error,
+    reload,
+    setError,
+  } = useList(apiBase, "/products", active);
   const [form, setForm] = useState({ name: "", stock: "" });
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", stock: "", is_active: 1 });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    stock: "",
+    is_active: 1,
+  });
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
 
-  const filtered = products.filter((p) => matches(search, p.product_id, p.name));
+  const filtered = products.filter((p) =>
+    matches(search, p.product_id, p.name),
+  );
 
   async function handleAdd(e) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await send(apiBase, "/products", "POST", { name: form.name, stock: Number(form.stock) });
+      await send(apiBase, "/products", "POST", {
+        name: form.name,
+        stock: Number(form.stock),
+      });
       setForm({ name: "", stock: "" });
       reload();
     } catch (err) {
@@ -560,7 +770,11 @@ function ProductsPanel({ apiBase, active }) {
 
   function startEdit(p) {
     setEditingId(p.product_id);
-    setEditForm({ name: p.name, stock: String(p.stock), is_active: p.is_active });
+    setEditForm({
+      name: p.name,
+      stock: String(p.stock),
+      is_active: p.is_active,
+    });
   }
 
   async function saveEdit(id) {
@@ -582,7 +796,12 @@ function ProductsPanel({ apiBase, active }) {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm("Delete this product? If it's used in past receipts, deactivate it instead.")) return;
+    if (
+      !window.confirm(
+        "Delete this product? If it's used in past receipts, deactivate it instead.",
+      )
+    )
+      return;
     setError(null);
     try {
       await send(apiBase, `/products/${id}`, "DELETE");
@@ -593,22 +812,54 @@ function ProductsPanel({ apiBase, active }) {
   }
 
   return (
-    <Panel title="Products" subtitle="Stock on hand and whether an item can still be sold.">
-      <Banner tone="error" onDismiss={() => setError(null)}>{error}</Banner>
+    <Panel
+      title="Products"
+      subtitle="Stock on hand and whether an item can still be sold."
+    >
+      <Banner tone="error" onDismiss={() => setError(null)}>
+        {error}
+      </Banner>
 
       <SectionCard>
-        <form onSubmit={handleAdd} style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <form
+          onSubmit={handleAdd}
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "flex-end",
+            flexWrap: "wrap",
+          }}
+        >
           <Field label="Name">
-            <TextInput required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Pen" />
+            <TextInput
+              required
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="e.g. Pen"
+            />
           </Field>
           <Field label="Stock">
-            <TextInput required type="number" min="0" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} />
+            <TextInput
+              required
+              type="number"
+              min="0"
+              value={form.stock}
+              onChange={(e) => setForm({ ...form, stock: e.target.value })}
+            />
           </Field>
-          <Btn type="submit" disabled={busy}>Add product</Btn>
+          <Btn type="submit" disabled={busy}>
+            Add product
+          </Btn>
         </form>
       </SectionCard>
 
-      <Toolbar search={search} onSearch={setSearch} placeholder="Search products..." shown={filtered.length} total={products.length} />
+      <Toolbar
+        search={search}
+        onSearch={setSearch}
+        placeholder="Search products..."
+        shown={filtered.length}
+        total={products.length}
+      />
 
       <Table
         columns={[
@@ -618,24 +869,56 @@ function ProductsPanel({ apiBase, active }) {
           { label: "Active", align: "left" },
           { label: "", align: "right" },
         ]}
-        empty={!loading && products.length === 0 ? "No products yet — add one above." : (!loading && filtered.length === 0 ? "No products match your search." : null)}
+        empty={
+          !loading && products.length === 0
+            ? "No products yet — add one above."
+            : !loading && filtered.length === 0
+              ? "No products match your search."
+              : null
+        }
       >
         {filtered.map((p) => {
           const isEditing = editingId === p.product_id;
           return (
             <tr key={p.product_id}>
-              <Td mono align="right">{p.product_id}</Td>
-              <Td>{isEditing ? <TextInput value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /> : p.name}</Td>
+              <Td mono align="right">
+                {p.product_id}
+              </Td>
+              <Td>
+                {isEditing ? (
+                  <TextInput
+                    value={editForm.name}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, name: e.target.value })
+                    }
+                  />
+                ) : (
+                  p.name
+                )}
+              </Td>
               <Td mono align="right">
                 {isEditing ? (
-                  <TextInput type="number" min="0" style={{ width: 90 }} value={editForm.stock} onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })} />
+                  <TextInput
+                    type="number"
+                    min="0"
+                    style={{ width: 90 }}
+                    value={editForm.stock}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, stock: e.target.value })
+                    }
+                  />
                 ) : (
                   p.stock
                 )}
               </Td>
               <Td>
                 {isEditing ? (
-                  <Select value={editForm.is_active} onChange={(e) => setEditForm({ ...editForm, is_active: e.target.value })}>
+                  <Select
+                    value={editForm.is_active}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, is_active: e.target.value })
+                    }
+                  >
                     <option value={1}>Active</option>
                     <option value={0}>Inactive</option>
                   </Select>
@@ -656,14 +939,37 @@ function ProductsPanel({ apiBase, active }) {
               </Td>
               <Td align="right" width={160}>
                 {isEditing ? (
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <Btn onClick={() => saveEdit(p.product_id)} disabled={busy}>Save</Btn>
-                    <Btn variant="ghost" onClick={() => setEditingId(null)}>Cancel</Btn>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <Btn onClick={() => saveEdit(p.product_id)} disabled={busy}>
+                      Save
+                    </Btn>
+                    <Btn variant="ghost" onClick={() => setEditingId(null)}>
+                      Cancel
+                    </Btn>
                   </div>
                 ) : (
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <Btn variant="ghost" onClick={() => startEdit(p)}>Edit</Btn>
-                    <Btn variant="danger" onClick={() => handleDelete(p.product_id)}>Delete</Btn>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <Btn variant="ghost" onClick={() => startEdit(p)}>
+                      Edit
+                    </Btn>
+                    <Btn
+                      variant="danger"
+                      onClick={() => handleDelete(p.product_id)}
+                    >
+                      Delete
+                    </Btn>
                   </div>
                 )}
               </Td>
@@ -679,14 +985,24 @@ function ProductsPanel({ apiBase, active }) {
    Price Lists
 --------------------------------------------------------------------- */
 function PriceListsPanel({ apiBase, active }) {
-  const { data: lists, loading, error, reload, setError } = useList(apiBase, "/price-list", active);
+  const {
+    data: lists,
+    loading,
+    error,
+    reload,
+    setError,
+  } = useList(apiBase, "/price-list", active);
   const [form, setForm] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
+  const [replacementId, setReplacementId] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
 
-  const filtered = lists.filter((pl) => matches(search, pl.price_list_id, pl.price_list_type));
+  const filtered = lists.filter((pl) =>
+    matches(search, pl.price_list_id, pl.price_list_type),
+  );
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -707,7 +1023,9 @@ function PriceListsPanel({ apiBase, active }) {
     setBusy(true);
     setError(null);
     try {
-      await send(apiBase, `/price-list/${id}`, "PUT", { price_list_type: editValue });
+      await send(apiBase, `/price-list/${id}`, "PUT", {
+        price_list_type: editValue,
+      });
       setEditingId(null);
       reload();
     } catch (err) {
@@ -717,31 +1035,63 @@ function PriceListsPanel({ apiBase, active }) {
     }
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm("Delete this price list?")) return;
+  function startDelete(id) {
+    setDeletingId(id);
+    setReplacementId("");
+  }
+
+  async function confirmDelete(id) {
+    if (!replacementId) return;
+    setBusy(true);
     setError(null);
     try {
-      await send(apiBase, `/price-list/${id}`, "DELETE");
+      await send(apiBase, `/price-list/${id}`, "DELETE", {
+        replacement_price_list_id: Number(replacementId),
+      });
+      setDeletingId(null);
       reload();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <Panel title="Price Lists" subtitle="Named tiers — Retail, Wholesale, and so on — that customers are assigned to.">
-      <Banner tone="error" onDismiss={() => setError(null)}>{error}</Banner>
+    <Panel
+      title="Price Lists"
+      subtitle="Named tiers — Retail, Wholesale, and so on — that customers are assigned to."
+    >
+      <Banner tone="error" onDismiss={() => setError(null)}>
+        {error}
+      </Banner>
 
       <SectionCard>
-        <form onSubmit={handleAdd} style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+        <form
+          onSubmit={handleAdd}
+          style={{ display: "flex", gap: 12, alignItems: "flex-end" }}
+        >
           <Field label="Price list name">
-            <TextInput required value={form} onChange={(e) => setForm(e.target.value)} placeholder="e.g. Wholesale" />
+            <TextInput
+              required
+              value={form}
+              onChange={(e) => setForm(e.target.value)}
+              placeholder="e.g. Wholesale"
+            />
           </Field>
-          <Btn type="submit" disabled={busy}>Add price list</Btn>
+          <Btn type="submit" disabled={busy}>
+            Add price list
+          </Btn>
         </form>
       </SectionCard>
 
-      <Toolbar search={search} onSearch={setSearch} placeholder="Search price lists..." shown={filtered.length} total={lists.length} />
+      <Toolbar
+        search={search}
+        onSearch={setSearch}
+        placeholder="Search price lists..."
+        shown={filtered.length}
+        total={lists.length}
+      />
 
       <Table
         columns={[
@@ -749,34 +1099,135 @@ function PriceListsPanel({ apiBase, active }) {
           { label: "Type", align: "left" },
           { label: "", align: "right" },
         ]}
-        empty={!loading && lists.length === 0 ? "No price lists yet — add one above." : (!loading && filtered.length === 0 ? "No price lists match your search." : null)}
+        empty={
+          !loading && lists.length === 0
+            ? "No price lists yet — add one above."
+            : !loading && filtered.length === 0
+              ? "No price lists match your search."
+              : null
+        }
       >
         {filtered.map((pl) => {
           const isEditing = editingId === pl.price_list_id;
+          const isDeleting = deletingId === pl.price_list_id;
+          const otherLists = lists.filter(
+            (p) => p.price_list_id !== pl.price_list_id,
+          );
           return (
-            <tr key={pl.price_list_id}>
-              <Td mono align="right">{pl.price_list_id}</Td>
-              <Td>
-                {isEditing ? (
-                  <TextInput value={editValue} onChange={(e) => setEditValue(e.target.value)} />
-                ) : (
-                  pl.price_list_type
-                )}
-              </Td>
-              <Td align="right" width={160}>
-                {isEditing ? (
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <Btn onClick={() => saveEdit(pl.price_list_id)} disabled={busy}>Save</Btn>
-                    <Btn variant="ghost" onClick={() => setEditingId(null)}>Cancel</Btn>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <Btn variant="ghost" onClick={() => { setEditingId(pl.price_list_id); setEditValue(pl.price_list_type); }}>Edit</Btn>
-                    <Btn variant="danger" onClick={() => handleDelete(pl.price_list_id)}>Delete</Btn>
-                  </div>
-                )}
-              </Td>
-            </tr>
+            <React.Fragment key={pl.price_list_id}>
+              <tr>
+                <Td mono align="right">
+                  {pl.price_list_id}
+                </Td>
+                <Td>
+                  {isEditing ? (
+                    <TextInput
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                    />
+                  ) : (
+                    pl.price_list_type
+                  )}
+                </Td>
+                <Td align="right" width={160}>
+                  {isEditing ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 6,
+                        justifyContent: "flex-end",
+                      }}
+                    >
+                      <Btn
+                        onClick={() => saveEdit(pl.price_list_id)}
+                        disabled={busy}
+                      >
+                        Save
+                      </Btn>
+                      <Btn variant="ghost" onClick={() => setEditingId(null)}>
+                        Cancel
+                      </Btn>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 6,
+                        justifyContent: "flex-end",
+                      }}
+                    >
+                      <Btn
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingId(pl.price_list_id);
+                          setEditValue(pl.price_list_type);
+                        }}
+                      >
+                        Edit
+                      </Btn>
+                      <Btn
+                        variant="danger"
+                        onClick={() => startDelete(pl.price_list_id)}
+                        disabled={isDeleting}
+                      >
+                        Delete
+                      </Btn>
+                    </div>
+                  )}
+                </Td>
+              </tr>
+              {isDeleting && (
+                <tr>
+                  <Td colSpan={3}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-end",
+                        flexWrap: "wrap",
+                        justifyContent: "flex-end",
+                      }}
+                    >
+                      {otherLists.length === 0 ? (
+                        <span style={{ fontSize: 13, color: C.inkFaint }}>
+                          You need at least one other price list to move its
+                          customers to before deleting this one.
+                        </span>
+                      ) : (
+                        <Field label="Move its customers to">
+                          <Select
+                            value={replacementId}
+                            onChange={(e) => setReplacementId(e.target.value)}
+                          >
+                            <option value="" disabled>
+                              Choose a price list
+                            </option>
+                            {otherLists.map((p) => (
+                              <option
+                                key={p.price_list_id}
+                                value={p.price_list_id}
+                              >
+                                {p.price_list_type}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                      )}
+                      <Btn
+                        variant="danger"
+                        onClick={() => confirmDelete(pl.price_list_id)}
+                        disabled={busy || !replacementId}
+                      >
+                        Confirm delete
+                      </Btn>
+                      <Btn variant="ghost" onClick={() => setDeletingId(null)}>
+                        Cancel
+                      </Btn>
+                    </div>
+                  </Td>
+                </tr>
+              )}
+            </React.Fragment>
           );
         })}
       </Table>
@@ -788,20 +1239,40 @@ function PriceListsPanel({ apiBase, active }) {
    Price List Items
 --------------------------------------------------------------------- */
 function PriceListItemsPanel({ apiBase, active }) {
-  const { data: items, loading, error, reload, setError } = useList(apiBase, "/price-list-items", active);
+  const {
+    data: items,
+    loading,
+    error,
+    reload,
+    setError,
+  } = useList(apiBase, "/price-list-items", active);
   const { data: priceLists } = useList(apiBase, "/price-list", active);
   const { data: products } = useList(apiBase, "/products", active);
 
-  const [form, setForm] = useState({ price_list_id: "", product_id: "", price: "" });
+  const [form, setForm] = useState({
+    price_list_id: "",
+    product_id: "",
+    price: "",
+  });
   const [editingId, setEditingId] = useState(null);
   const [editPrice, setEditPrice] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
 
-  const plLabel = (id) => priceLists.find((p) => p.price_list_id === id)?.price_list_type ?? `#${id}`;
-  const prodLabel = (id) => products.find((p) => p.product_id === id)?.name ?? `#${id}`;
+  const plLabel = (id) =>
+    priceLists.find((p) => p.price_list_id === id)?.price_list_type ?? `#${id}`;
+  const prodLabel = (id) =>
+    products.find((p) => p.product_id === id)?.name ?? `#${id}`;
 
-  const filtered = items.filter((it) => matches(search, it.id, plLabel(it.price_list_id), prodLabel(it.product_id), it.price));
+  const filtered = items.filter((it) =>
+    matches(
+      search,
+      it.id,
+      plLabel(it.price_list_id),
+      prodLabel(it.product_id),
+      it.price,
+    ),
+  );
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -826,7 +1297,9 @@ function PriceListItemsPanel({ apiBase, active }) {
     setBusy(true);
     setError(null);
     try {
-      await send(apiBase, `/price-list-items/${id}`, "PUT", { price: Number(editPrice) });
+      await send(apiBase, `/price-list-items/${id}`, "PUT", {
+        price: Number(editPrice),
+      });
       setEditingId(null);
       reload();
     } catch (err) {
@@ -848,35 +1321,80 @@ function PriceListItemsPanel({ apiBase, active }) {
   }
 
   return (
-    <Panel title="Price List Items" subtitle="What each product costs on each price list.">
-      <Banner tone="error" onDismiss={() => setError(null)}>{error}</Banner>
+    <Panel
+      title="Price List Items"
+      subtitle="What each product costs on each price list."
+    >
+      <Banner tone="error" onDismiss={() => setError(null)}>
+        {error}
+      </Banner>
 
       <SectionCard>
-        <form onSubmit={handleAdd} style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <form
+          onSubmit={handleAdd}
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "flex-end",
+            flexWrap: "wrap",
+          }}
+        >
           <Field label="Price list">
-            <Select required value={form.price_list_id} onChange={(e) => setForm({ ...form, price_list_id: e.target.value })}>
-              <option value="" disabled>Choose one</option>
+            <Select
+              required
+              value={form.price_list_id}
+              onChange={(e) =>
+                setForm({ ...form, price_list_id: e.target.value })
+              }
+            >
+              <option value="" disabled>
+                Choose one
+              </option>
               {priceLists.map((p) => (
-                <option key={p.price_list_id} value={p.price_list_id}>{p.price_list_type}</option>
+                <option key={p.price_list_id} value={p.price_list_id}>
+                  {p.price_list_type}
+                </option>
               ))}
             </Select>
           </Field>
           <Field label="Product">
-            <Select required value={form.product_id} onChange={(e) => setForm({ ...form, product_id: e.target.value })}>
-              <option value="" disabled>Choose one</option>
+            <Select
+              required
+              value={form.product_id}
+              onChange={(e) => setForm({ ...form, product_id: e.target.value })}
+            >
+              <option value="" disabled>
+                Choose one
+              </option>
               {products.map((p) => (
-                <option key={p.product_id} value={p.product_id}>{p.name}</option>
+                <option key={p.product_id} value={p.product_id}>
+                  {p.name}
+                </option>
               ))}
             </Select>
           </Field>
           <Field label="Price">
-            <TextInput required type="number" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+            <TextInput
+              required
+              type="number"
+              min="0"
+              value={form.price}
+              onChange={(e) => setForm({ ...form, price: e.target.value })}
+            />
           </Field>
-          <Btn type="submit" disabled={busy}>Add item</Btn>
+          <Btn type="submit" disabled={busy}>
+            Add item
+          </Btn>
         </form>
       </SectionCard>
 
-      <Toolbar search={search} onSearch={setSearch} placeholder="Search by product or list..." shown={filtered.length} total={items.length} />
+      <Toolbar
+        search={search}
+        onSearch={setSearch}
+        placeholder="Search by product or list..."
+        shown={filtered.length}
+        total={items.length}
+      />
 
       <Table
         columns={[
@@ -886,32 +1404,72 @@ function PriceListItemsPanel({ apiBase, active }) {
           { label: "Price", align: "right" },
           { label: "", align: "right" },
         ]}
-        empty={!loading && items.length === 0 ? "No price list items yet — add one above." : (!loading && filtered.length === 0 ? "No items match your search." : null)}
+        empty={
+          !loading && items.length === 0
+            ? "No price list items yet — add one above."
+            : !loading && filtered.length === 0
+              ? "No items match your search."
+              : null
+        }
       >
         {filtered.map((it) => {
           const isEditing = editingId === it.id;
           return (
             <tr key={it.id}>
-              <Td mono align="right">{it.id}</Td>
+              <Td mono align="right">
+                {it.id}
+              </Td>
               <Td>{plLabel(it.price_list_id)}</Td>
               <Td>{prodLabel(it.product_id)}</Td>
               <Td mono align="right">
                 {isEditing ? (
-                  <TextInput type="number" min="0" style={{ width: 90 }} value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
+                  <TextInput
+                    type="number"
+                    min="0"
+                    style={{ width: 90 }}
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                  />
                 ) : (
                   money(it.price)
                 )}
               </Td>
               <Td align="right" width={160}>
                 {isEditing ? (
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <Btn onClick={() => saveEdit(it.id)} disabled={busy}>Save</Btn>
-                    <Btn variant="ghost" onClick={() => setEditingId(null)}>Cancel</Btn>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <Btn onClick={() => saveEdit(it.id)} disabled={busy}>
+                      Save
+                    </Btn>
+                    <Btn variant="ghost" onClick={() => setEditingId(null)}>
+                      Cancel
+                    </Btn>
                   </div>
                 ) : (
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <Btn variant="ghost" onClick={() => { setEditingId(it.id); setEditPrice(String(it.price)); }}>Edit</Btn>
-                    <Btn variant="danger" onClick={() => handleDelete(it.id)}>Delete</Btn>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <Btn
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingId(it.id);
+                        setEditPrice(String(it.price));
+                      }}
+                    >
+                      Edit
+                    </Btn>
+                    <Btn variant="danger" onClick={() => handleDelete(it.id)}>
+                      Delete
+                    </Btn>
                   </div>
                 )}
               </Td>
@@ -927,7 +1485,13 @@ function PriceListItemsPanel({ apiBase, active }) {
    Receipts
 --------------------------------------------------------------------- */
 function ReceiptsPanel({ apiBase, active }) {
-  const { data: receipts, loading, error, reload, setError } = useList(apiBase, "/receipts", active);
+  const {
+    data: receipts,
+    loading,
+    error,
+    reload,
+    setError,
+  } = useList(apiBase, "/receipts", active);
   const { data: customers } = useList(apiBase, "/customers", active);
   const { data: products } = useList(apiBase, "/products", active);
 
@@ -938,10 +1502,20 @@ function ReceiptsPanel({ apiBase, active }) {
   const [openId, setOpenId] = useState(null);
   const [search, setSearch] = useState("");
 
-  const customerLabel = (id) => customers.find((c) => c.customer_id === id)?.name ?? `#${id}`;
-  const productLabel = (id) => products.find((p) => p.product_id === id)?.name ?? `#${id}`;
+  const customerLabel = (id) =>
+    customers.find((c) => c.customer_id === id)?.name ?? `#${id}`;
+  const productLabel = (id) =>
+    products.find((p) => p.product_id === id)?.name ?? `#${id}`;
 
-  const filtered = receipts.filter((r) => matches(search, r["receipt#"], customerLabel(r.customer_id), r.date, r.total));
+  const filtered = receipts.filter((r) =>
+    matches(
+      search,
+      r["receipt#"],
+      customerLabel(r.customer_id),
+      r.date,
+      r.total,
+    ),
+  );
 
   function updateLine(idx, patch) {
     setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -961,9 +1535,16 @@ function ReceiptsPanel({ apiBase, active }) {
     try {
       const items = lines
         .filter((l) => l.product_id)
-        .map((l) => ({ product_id: Number(l.product_id), quantity: Number(l.quantity) }));
-      if (items.length === 0) throw new Error("Add at least one item to the receipt.");
-      await send(apiBase, "/receipts", "POST", { customer_id: Number(customerId), items });
+        .map((l) => ({
+          product_id: Number(l.product_id),
+          quantity: Number(l.quantity),
+        }));
+      if (items.length === 0)
+        throw new Error("Add at least one item to the receipt.");
+      await send(apiBase, "/receipts", "POST", {
+        customer_id: Number(customerId),
+        items,
+      });
       setCustomerId("");
       setLines([{ product_id: "", quantity: "1" }]);
       setNotice("Receipt created.");
@@ -976,31 +1557,70 @@ function ReceiptsPanel({ apiBase, active }) {
   }
 
   return (
-    <Panel title="Receipts" subtitle="Sales, priced from the customer's own price list and deducted from stock.">
-      <Banner tone="error" onDismiss={() => setError(null)}>{error}</Banner>
-      <Banner tone="ok" onDismiss={() => setNotice(null)}>{notice}</Banner>
+    <Panel
+      title="Receipts"
+      subtitle="Sales, priced from the customer's own price list and deducted from stock."
+    >
+      <Banner tone="error" onDismiss={() => setError(null)}>
+        {error}
+      </Banner>
+      <Banner tone="ok" onDismiss={() => setNotice(null)}>
+        {notice}
+      </Banner>
 
       <SectionCard>
         <form onSubmit={handleCreate}>
-          <div style={{ display: "flex", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              marginBottom: 14,
+              flexWrap: "wrap",
+            }}
+          >
             <Field label="Customer">
-              <Select required value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                <option value="" disabled>Choose one</option>
+              <Select
+                required
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+              >
+                <option value="" disabled>
+                  Choose one
+                </option>
                 {customers.map((c) => (
-                  <option key={c.customer_id} value={c.customer_id}>{c.name}</option>
+                  <option key={c.customer_id} value={c.customer_id}>
+                    {c.name}
+                  </option>
                 ))}
               </Select>
             </Field>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              marginBottom: 12,
+            }}
+          >
             {lines.map((l, idx) => (
-              <div key={idx} style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+              <div
+                key={idx}
+                style={{ display: "flex", gap: 10, alignItems: "flex-end" }}
+              >
                 <Field label="Product">
-                  <Select value={l.product_id} onChange={(e) => updateLine(idx, { product_id: e.target.value })}>
+                  <Select
+                    value={l.product_id}
+                    onChange={(e) =>
+                      updateLine(idx, { product_id: e.target.value })
+                    }
+                  >
                     <option value="">Choose one</option>
                     {products.map((p) => (
-                      <option key={p.product_id} value={p.product_id}>{p.name} ({p.stock} in stock)</option>
+                      <option key={p.product_id} value={p.product_id}>
+                        {p.name} ({p.stock} in stock)
+                      </option>
                     ))}
                   </Select>
                 </Field>
@@ -1010,24 +1630,42 @@ function ReceiptsPanel({ apiBase, active }) {
                     min="1"
                     style={{ width: 90 }}
                     value={l.quantity}
-                    onChange={(e) => updateLine(idx, { quantity: e.target.value })}
+                    onChange={(e) =>
+                      updateLine(idx, { quantity: e.target.value })
+                    }
                   />
                 </Field>
                 {lines.length > 1 && (
-                  <Btn type="button" variant="danger" onClick={() => removeLine(idx)}>Remove</Btn>
+                  <Btn
+                    type="button"
+                    variant="danger"
+                    onClick={() => removeLine(idx)}
+                  >
+                    Remove
+                  </Btn>
                 )}
               </div>
             ))}
           </div>
 
           <div style={{ display: "flex", gap: 10 }}>
-            <Btn type="button" variant="ghost" onClick={addLine}>Add another item</Btn>
-            <Btn type="submit" disabled={busy}>Create receipt</Btn>
+            <Btn type="button" variant="ghost" onClick={addLine}>
+              Add another item
+            </Btn>
+            <Btn type="submit" disabled={busy}>
+              Create receipt
+            </Btn>
           </div>
         </form>
       </SectionCard>
 
-      <Toolbar search={search} onSearch={setSearch} placeholder="Search receipts..." shown={filtered.length} total={receipts.length} />
+      <Toolbar
+        search={search}
+        onSearch={setSearch}
+        placeholder="Search receipts..."
+        shown={filtered.length}
+        total={receipts.length}
+      />
 
       <Table
         columns={[
@@ -1037,7 +1675,13 @@ function ReceiptsPanel({ apiBase, active }) {
           { label: "Total", align: "right" },
           { label: "", align: "right" },
         ]}
-        empty={!loading && receipts.length === 0 ? "No receipts yet — create one above." : (!loading && filtered.length === 0 ? "No receipts match your search." : null)}
+        empty={
+          !loading && receipts.length === 0
+            ? "No receipts yet — create one above."
+            : !loading && filtered.length === 0
+              ? "No receipts match your search."
+              : null
+        }
       >
         {filtered.map((r) => {
           const rn = r["receipt#"];
@@ -1045,12 +1689,19 @@ function ReceiptsPanel({ apiBase, active }) {
           return (
             <React.Fragment key={rn}>
               <tr>
-                <Td mono align="right">{rn}</Td>
+                <Td mono align="right">
+                  {rn}
+                </Td>
                 <Td>{customerLabel(r.customer_id)}</Td>
                 <Td mono>{r.date}</Td>
-                <Td mono align="right">{money(r.total)}</Td>
+                <Td mono align="right">
+                  {money(r.total)}
+                </Td>
                 <Td align="right" width={120}>
-                  <Btn variant="ghost" onClick={() => setOpenId(isOpen ? null : rn)}>
+                  <Btn
+                    variant="ghost"
+                    onClick={() => setOpenId(isOpen ? null : rn)}
+                  >
                     {isOpen ? "Hide items" : "Show items"}
                   </Btn>
                 </Td>
@@ -1059,31 +1710,133 @@ function ReceiptsPanel({ apiBase, active }) {
                 <tr>
                   <Td colSpan={5}>
                     <div style={{ padding: "6px 4px 10px" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: FONT_SANS }}>
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontFamily: FONT_SANS,
+                        }}
+                      >
                         <thead>
                           <tr>
-                            <th style={{ textAlign: "left", padding: "4px 8px", fontSize: 11, color: C.accentText, fontWeight: 700 }}>Item</th>
-                            <th style={{ textAlign: "right", padding: "4px 8px", fontSize: 11, color: C.accentText, fontWeight: 700 }}>Quantity</th>
-                            <th style={{ textAlign: "right", padding: "4px 8px", fontSize: 11, color: C.accentText, fontWeight: 700 }}>Price</th>
-                            <th style={{ textAlign: "right", padding: "4px 8px", fontSize: 11, color: C.accentText, fontWeight: 700 }}>Subtotal</th>
+                            <th
+                              style={{
+                                textAlign: "left",
+                                padding: "4px 8px",
+                                fontSize: 11,
+                                color: C.accentText,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Item
+                            </th>
+                            <th
+                              style={{
+                                textAlign: "right",
+                                padding: "4px 8px",
+                                fontSize: 11,
+                                color: C.accentText,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Quantity
+                            </th>
+                            <th
+                              style={{
+                                textAlign: "right",
+                                padding: "4px 8px",
+                                fontSize: 11,
+                                color: C.accentText,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Price
+                            </th>
+                            <th
+                              style={{
+                                textAlign: "right",
+                                padding: "4px 8px",
+                                fontSize: 11,
+                                color: C.accentText,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Subtotal
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           {(r.items || []).map((it, i) => (
                             <tr key={i}>
-                              <td style={{ padding: "5px 8px", fontSize: 13, color: C.ink }}>{productLabel(it.product_id)}</td>
-                              <td style={{ padding: "5px 8px", fontSize: 13, color: C.ink, textAlign: "right", fontFamily: FONT_MONO }}>{it.quantity}</td>
-                              <td style={{ padding: "5px 8px", fontSize: 13, color: C.ink, textAlign: "right", fontFamily: FONT_MONO }}>{money(it.price)}</td>
-                              <td style={{ padding: "5px 8px", fontSize: 13, color: C.ink, textAlign: "right", fontFamily: FONT_MONO }}>{money(it.price * it.quantity)}</td>
+                              <td
+                                style={{
+                                  padding: "5px 8px",
+                                  fontSize: 13,
+                                  color: C.ink,
+                                }}
+                              >
+                                {productLabel(it.product_id)}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "5px 8px",
+                                  fontSize: 13,
+                                  color: C.ink,
+                                  textAlign: "right",
+                                  fontFamily: FONT_MONO,
+                                }}
+                              >
+                                {it.quantity}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "5px 8px",
+                                  fontSize: 13,
+                                  color: C.ink,
+                                  textAlign: "right",
+                                  fontFamily: FONT_MONO,
+                                }}
+                              >
+                                {money(it.price)}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "5px 8px",
+                                  fontSize: 13,
+                                  color: C.ink,
+                                  textAlign: "right",
+                                  fontFamily: FONT_MONO,
+                                }}
+                              >
+                                {money(it.price * it.quantity)}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot>
                           <tr>
-                            <td colSpan={3} style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: C.ink, borderTop: `1px solid ${C.line}` }}>
+                            <td
+                              colSpan={3}
+                              style={{
+                                padding: "7px 8px",
+                                textAlign: "right",
+                                fontWeight: 700,
+                                color: C.ink,
+                                borderTop: `1px solid ${C.line}`,
+                              }}
+                            >
                               Total
                             </td>
-                            <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: C.ink, fontFamily: FONT_MONO, borderTop: `1px solid ${C.line}` }}>
+                            <td
+                              style={{
+                                padding: "7px 8px",
+                                textAlign: "right",
+                                fontWeight: 700,
+                                color: C.ink,
+                                fontFamily: FONT_MONO,
+                                borderTop: `1px solid ${C.line}`,
+                              }}
+                            >
                               {money(r.total)}
                             </td>
                           </tr>
@@ -1109,7 +1862,9 @@ export default function App() {
   const [tab, setTab] = useState("customers");
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", fontFamily: FONT_SANS }}>
+    <div
+      style={{ background: C.bg, minHeight: "100vh", fontFamily: FONT_SANS }}
+    >
       <style>{`
         .app-input {
           transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
@@ -1130,8 +1885,19 @@ export default function App() {
           background: ${C.hoverBg};
         }
       `}</style>
-      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "28px 20px 60px" }}>
-        <header style={{ display: "flex", justifyContent: "flex-end", alignItems: "flex-end", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+      <div
+        style={{ maxWidth: 1040, margin: "0 auto", padding: "28px 20px 60px" }}
+      >
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "flex-end",
+            marginBottom: 20,
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
           <Field label="API address">
             <TextInput
               value={apiBase}
@@ -1165,7 +1931,9 @@ export default function App() {
                   padding: "9px 14px",
                   background: "none",
                   border: "none",
-                  borderBottom: isActive ? `2px solid ${C.blue}` : "2px solid transparent",
+                  borderBottom: isActive
+                    ? `2px solid ${C.blue}`
+                    : "2px solid transparent",
                   marginBottom: -1,
                   color: isActive ? C.blue : C.inkFaint,
                   cursor: "pointer",
@@ -1178,11 +1946,24 @@ export default function App() {
         </nav>
 
         <main>
-          {tab === "customers" && <CustomersPanel apiBase={apiBase} active={tab === "customers"} />}
-          {tab === "products" && <ProductsPanel apiBase={apiBase} active={tab === "products"} />}
-          {tab === "priceLists" && <PriceListsPanel apiBase={apiBase} active={tab === "priceLists"} />}
-          {tab === "priceListItems" && <PriceListItemsPanel apiBase={apiBase} active={tab === "priceListItems"} />}
-          {tab === "receipts" && <ReceiptsPanel apiBase={apiBase} active={tab === "receipts"} />}
+          {tab === "customers" && (
+            <CustomersPanel apiBase={apiBase} active={tab === "customers"} />
+          )}
+          {tab === "products" && (
+            <ProductsPanel apiBase={apiBase} active={tab === "products"} />
+          )}
+          {tab === "priceLists" && (
+            <PriceListsPanel apiBase={apiBase} active={tab === "priceLists"} />
+          )}
+          {tab === "priceListItems" && (
+            <PriceListItemsPanel
+              apiBase={apiBase}
+              active={tab === "priceListItems"}
+            />
+          )}
+          {tab === "receipts" && (
+            <ReceiptsPanel apiBase={apiBase} active={tab === "receipts"} />
+          )}
         </main>
       </div>
     </div>

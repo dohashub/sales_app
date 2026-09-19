@@ -143,6 +143,19 @@ parameters:
     type: integer
     required: true
     description: The ID of the price list
+    
+  - in: body
+    name: body
+    required: true
+    schema:
+      type: object
+      properties:
+        replacement_price_list_id:
+          type: integer
+          example: 2
+      required:
+        - replacement_price_list_id
+
 responses:
   200:
     description: Price list deleted successfully
@@ -151,6 +164,14 @@ responses:
   409:
     description: Price list cannot be deleted because it is being used in existing records
 """
-  result, status_code = delete_price_list(id)
+  data = request.get_json()
+  if data is None:
+    return jsonify({"message": "Request body is required"}), 400
+  if not isinstance(data, dict):
+      return jsonify({"message": "Request body must be a JSON object"}), 400
+  
+  replacement_price_list_id = data.get("replacement_price_list_id")
+
+  result, status_code = delete_price_list(id, replacement_price_list_id)
 
   return jsonify(result), status_code
