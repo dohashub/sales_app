@@ -1,6 +1,6 @@
 from flask import jsonify, request, Blueprint
 from datetime import date
-from services.receipts_service import get_all_receipts, get_receipt, add_receipt, update_receipt, delete_receipt
+from services.receipts_service import get_all_receipts, get_receipt, add_receipt
 
 receipts_bp = Blueprint("receipts", __name__)
 

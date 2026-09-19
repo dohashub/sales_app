@@ -14,6 +14,7 @@ from routes.customers import customers_bp
 from routes.price_list import price_list_bp
 from routes.price_list_items import price_list_items_bp
 from routes.receipts import receipts_bp
+from routes.returns import returns_bp
 
 load_dotenv()
 
@@ -36,6 +37,7 @@ app.register_blueprint(customers_bp)
 app.register_blueprint(price_list_bp)
 app.register_blueprint(price_list_items_bp)
 app.register_blueprint(receipts_bp)
+app.register_blueprint(returns_bp)
 
 @app.route('/')
 def home():
