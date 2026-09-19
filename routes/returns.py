@@ -18,43 +18,83 @@ def get_returns():
   ---
   tags:
     - Returns
+
+  parameters:
+    - name: page
+      in: query
+      type: integer
+      required: false
+      default: 1
+      description: Page number
+
+    - name: limit
+      in: query
+      type: integer
+      required: false
+      default: 10
+      description: Number of returns per page
+
   responses:
     200:
-      description: List of all returns
+      description: List of returns
       schema:
-        type: array
-        items:
-          type: object
-          properties:
-            return_id:
-              type: integer
-              example: 1
-            receipt_no:
-              type: integer
-              example: 5
-            date:
-              type: string
-              format: date
-              example: "2026-09-19"
-            total:
-              type: integer
-              example: 200
+        type: object
+        properties:
+          data:
+            type: array
             items:
-              type: array
-              items:
-                type: object
-                properties:
-                  product_id:
-                    type: integer
-                    example: 3
-                  quantity:
-                    type: integer
-                    example: 2
-                  price:
-                    type: integer
-                    example: 100
+              type: object
+              properties:
+                return_id:
+                  type: integer
+                  example: 1
+                receipt_no:
+                  type: integer
+                  example: 5
+                date:
+                  type: string
+                  format: date
+                  example: "2026-09-19"
+                total:
+                  type: integer
+                  example: 200
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: integer
+                        example: 3
+                      quantity:
+                        type: integer
+                        example: 2
+                      price:
+                        type: integer
+                        example: 100
+          page:
+            type: integer
+            example: 1
+          limit:
+            type: integer
+            example: 10
+          total:
+            type: integer
+            example: 25
+
+    400:
+      description: Invalid pagination value
+      schema:
+        type: object
+        properties:
+          message:
+            type: string
   """
-  result, status_code = get_all_returns()
+
+  page = request.args.get("page", 1)
+  limit = request.args.get("limit", 10)
+
+  result, status_code = get_all_returns(page, limit)
 
   return jsonify(result), status_code
 

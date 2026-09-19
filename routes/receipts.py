@@ -10,38 +10,79 @@ receipts_bp = Blueprint("receipts", __name__)
 @receipts_bp.route("/receipts", methods=["GET"])
 def get_receipts():
   """
-Get all receipts
----
-responses:
-  200:
-    description: A list of all receipts with their items
-    schema:
-      type: array
-      items:
+  Get all receipts
+  ---
+  parameters:
+    - name: page
+      in: query
+      type: integer
+      required: false
+      default: 1
+      description: Page number
+
+    - name: limit
+      in: query
+      type: integer
+      required: false
+      default: 10
+      description: Number of receipts per page
+
+  responses:
+    200:
+      description: A list of receipts with their items
+      schema:
         type: object
         properties:
-          receipt#:
-            type: integer
-          customer_id:
-            type: integer
-          date:
-            type: string
-            format: date
-          total:
-            type: integer
-          items:
+          data:
             type: array
             items:
               type: object
               properties:
-                product_id:
+                receipt#:
                   type: integer
-                quantity:
+                customer_id:
                   type: integer
-                price:
+                date:
+                  type: string
+                  format: date
+                total:
                   type: integer
-"""
-  result, status_code = get_all_receipts()
+                status:
+                  type: string
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: integer
+                      quantity:
+                        type: integer
+                      price:
+                        type: integer
+          page:
+            type: integer
+            example: 1
+          limit:
+            type: integer
+            example: 10
+          total:
+            type: integer
+            example: 25
+
+    400:
+      description: Invalid pagination value
+      schema:
+        type: object
+        properties:
+          message:
+            type: string
+  """
+
+  page = request.args.get("page", 1)
+  limit = request.args.get("limit", 10)
+
+  result, status_code = get_all_receipts(page, limit)
 
   return jsonify(result), status_code
 

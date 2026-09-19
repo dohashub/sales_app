@@ -9,22 +9,61 @@ price_list_bp = Blueprint("price_list", __name__)
 @price_list_bp.route("/price-list", methods=["GET"])
 def get_price_lists():
   """
-Get all price lists
----
-responses:
-  200:
-    description: A list of all price lists
-    schema:
-      type: array
-      items:
+  Get all price lists
+  ---
+  parameters:
+    - name: page
+      in: query
+      type: integer
+      required: false
+      default: 1
+      description: Page number
+
+    - name: limit
+      in: query
+      type: integer
+      required: false
+      default: 10
+      description: Number of price lists per page
+
+  responses:
+    200:
+      description: A list of price lists
+      schema:
         type: object
         properties:
-          price_list_id:
+          data:
+            type: array
+            items:
+              type: object
+              properties:
+                price_list_id:
+                  type: integer
+                price_list_type:
+                  type: string
+          page:
             type: integer
-          price_list_type:
+            example: 1
+          limit:
+            type: integer
+            example: 10
+          total:
+            type: integer
+            example: 5
+
+    400:
+      description: Invalid pagination value
+      schema:
+        type: object
+        properties:
+          message:
             type: string
-"""
-  result, status_code = get_all_price_lists()
+  """
+
+  page = request.args.get("page", 1)
+  limit = request.args.get("limit", 10)
+
+  result, status_code = get_all_price_lists(page, limit)
 
   return jsonify(result), status_code
 

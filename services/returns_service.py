@@ -3,33 +3,67 @@ from models.returns import Return, ReturnItem
 from models.receipts import Receipt, ReceiptItem
 from models.products import Product
 
-def get_all_returns():
-  returns = Return.query.all()
+def get_all_returns(page, limit):
+    # Validate page
+    try:
+        page = int(page)
+    except ValueError:
+        return {"message": "page must be an integer"}, 400
 
-  result = []
+    if page <= 0:
+        return {"message": "page must be a positive integer"}, 400
 
-  for return_record in returns:
+    # Validate limit
+    try:
+        limit = int(limit)
+    except ValueError:
+        return {"message": "limit must be an integer"}, 400
 
-      return_items = ReturnItem.query.filter(
-          ReturnItem.return_id == return_record.return_id
-      ).all()
+    if limit <= 0:
+        return {"message": "limit must be a positive integer"}, 400
 
-      result.append({
-          "return_id": return_record.return_id,
-          "receipt_no": return_record.receipt_no,
-          "date": return_record.date,
-          "total": return_record.total,
-          "items": [
-              {
-                  "product_id": item.product_id,
-                  "quantity": item.quantity,
-                  "price": item.price
-              }
-              for item in return_items
-          ]
-      })
+    # Get all returns
+    query = Return.query
 
-  return result, 200
+    # Count returns
+    total = query.count()
+
+    # Calculate where this page starts
+    offset = (page - 1) * limit
+
+    # Get only the returns for this page
+    returns = query.offset(offset).limit(limit).all()
+
+    result = []
+
+    # Add Return Items to each return
+    for return_record in returns:
+
+        return_items = ReturnItem.query.filter(
+            ReturnItem.return_id == return_record.return_id
+        ).all()
+
+        result.append({
+            "return_id": return_record.return_id,
+            "receipt_no": return_record.receipt_no,
+            "date": return_record.date,
+            "total": return_record.total,
+            "items": [
+                {
+                    "product_id": item.product_id,
+                    "quantity": item.quantity,
+                    "price": item.price
+                }
+                for item in return_items
+            ]
+        })
+
+    return {
+        "data": result,
+        "page": page,
+        "limit": limit,
+        "total": total
+    }, 200
 
 def get_return(return_id):
   return_record = Return.query.get(return_id)

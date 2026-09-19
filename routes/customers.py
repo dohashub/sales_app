@@ -32,20 +32,46 @@ def get_customers():
       description: Filter customers by price list ID
       example: 2
 
+    - name: page
+      in: query
+      type: integer
+      required: false
+      default: 1
+      description: Page number
+
+    - name: limit
+      in: query
+      type: integer
+      required: false
+      default: 10
+      description: Number of customers per page
+
   responses:
     200:
       description: A list of customers
       schema:
-        type: array
-        items:
-          type: object
-          properties:
-            customer_id:
-              type: integer
-            name:
-              type: string
-            price_list_id:
-              type: integer
+        type: object
+        properties:
+          data:
+            type: array
+            items:
+              type: object
+              properties:
+                customer_id:
+                  type: integer
+                name:
+                  type: string
+                price_list_id:
+                  type: integer
+          page:
+            type: integer
+            example: 1
+          limit:
+            type: integer
+            example: 10
+          total:
+            type: integer
+            example: 25
 
     400:
       description: Invalid filter value
@@ -54,8 +80,12 @@ def get_customers():
   search = request.args.get("search")
   customer_id = request.args.get("customer_id")
   price_list_id = request.args.get("price_list_id")
+  page = request.args.get("page", 1)
+  limit = request.args.get("limit", 10)
 
-  result, status_code = get_all_customers(search, customer_id, price_list_id)
+  result, status_code = get_all_customers(
+    search, customer_id, price_list_id, page, limit
+  )
 
   return jsonify(result), status_code
 

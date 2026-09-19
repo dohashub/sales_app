@@ -3,7 +3,7 @@ from models.price_list import PriceList
 from database import db
 from sqlalchemy.exc import IntegrityError
 
-def get_all_customers(search, customer_id, price_list_id):
+def get_all_customers(search, customer_id, price_list_id, page, limit):
   # Clean search text
   if search:
     search = search.strip()
@@ -36,6 +36,24 @@ def get_all_customers(search, customer_id, price_list_id):
 
   query = Customer.query
 
+  # Validate page
+  try:
+      page = int(page)
+  except ValueError:
+      return {"message": "page must be an integer"}, 400
+
+  if page <= 0:
+      return {"message": "page must be a positive integer"}, 400
+
+  # Validate limit
+  try:
+      limit = int(limit)
+  except ValueError:
+      return {"message": "limit must be an integer"}, 400
+
+  if limit <= 0:
+      return {"message": "limit must be a positive integer"}, 400
+
   # Name search
   if search:
     query = query.filter(Customer.name.like(f"%{search}%"))
@@ -48,7 +66,14 @@ def get_all_customers(search, customer_id, price_list_id):
   if price_list_id is not None:
     query = query.filter(Customer.price_list_id == price_list_id)
 
-  customers = query.all()
+  # Count customers after applying filters
+  total = query.count()
+
+  # Calculate where this page starts
+  offset = (page - 1) * limit
+
+  # Get only the customers for this page
+  customers = query.offset(offset).limit(limit).all()
 
   result = [
     {
@@ -59,7 +84,12 @@ def get_all_customers(search, customer_id, price_list_id):
     for customer in customers
   ]
 
-  return result, 200
+  return {
+    "data": result,
+    "page": page,
+    "limit": limit,
+    "total": total
+  }, 200
 
 
 def get_customer(customer_id):

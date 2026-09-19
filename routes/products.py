@@ -30,10 +30,47 @@ def get_products():
       in: query
       type: integer
       required: false
+    
+    - name: page
+      in: query
+      type: integer
+      required: false
+      default: 1
+
+    - name: limit
+      in: query
+      type: integer
+      required: false
+      default: 10
 
   responses:
     200:
       description: A list of products
+      schema:
+        type: object
+        properties:
+          data:
+            type: array
+            items:
+              type: object
+              properties:
+                product_id:
+                  type: integer
+                name:
+                  type: string
+                stock:
+                  type: integer
+                is_active:
+                  type: boolean
+          page:
+            type: integer
+            example: 1
+          limit:
+            type: integer
+            example: 10
+          total:
+            type: integer
+            example: 25
     400:
       description: Invalid filter value
   """
@@ -43,7 +80,10 @@ def get_products():
   min_stock = request.args.get("min_stock")
   max_stock = request.args.get("max_stock")
 
-  result, status_code = get_all_products(search, product_id, min_stock, max_stock)
+  page = request.args.get("page", 1)
+  limit = request.args.get("limit", 10)
+
+  result, status_code = get_all_products(search, product_id, min_stock, max_stock, page, limit)
 
   return jsonify(result), status_code
 

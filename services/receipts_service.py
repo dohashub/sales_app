@@ -6,29 +6,68 @@ from models.customers import Customer
 from models.receipts import Receipt, ReceiptItem
 
 
-def get_all_receipts():
-  receipts = Receipt.query.all()
-  result=[]
-  # add Receipt Items to receipt
+def get_all_receipts(page, limit):
+  # Validate page
+  try:
+      page = int(page)
+  except ValueError:
+      return {"message": "page must be an integer"}, 400
+
+  if page <= 0:
+      return {"message": "page must be a positive integer"}, 400
+
+  # Validate limit
+  try:
+      limit = int(limit)
+  except ValueError:
+      return {"message": "limit must be an integer"}, 400
+
+  if limit <= 0:
+      return {"message": "limit must be a positive integer"}, 400
+
+  # Get all receipts
+  query = Receipt.query
+
+  # Count receipts
+  total = query.count()
+
+  # Calculate where this page starts
+  offset = (page - 1) * limit
+
+  # Get only the receipts for this page
+  receipts = query.offset(offset).limit(limit).all()
+
+  result = []
+
+  # Add Receipt Items to each receipt
   for receipt in receipts:
-    receipt_items = ReceiptItem.query.filter(ReceiptItem.receipt_no == receipt.receipt_no).all()
-    result.append({
-        "receipt#" : receipt.receipt_no,
-        "customer_id" : receipt.customer_id,
-        "date" : receipt.date,
-        "total" : receipt.total,
-        "status": receipt.status,
-        "items" : [
-            {
-              "product_id" : item.product_id,
-              "quantity" : item.quantity,
-              "price" : item.price
-            }
-            for item in receipt_items
-        ]
+
+      receipt_items = ReceiptItem.query.filter(
+          ReceiptItem.receipt_no == receipt.receipt_no
+      ).all()
+
+      result.append({
+          "receipt#": receipt.receipt_no,
+          "customer_id": receipt.customer_id,
+          "date": receipt.date,
+          "total": receipt.total,
+          "status": receipt.status,
+          "items": [
+              {
+                  "product_id": item.product_id,
+                  "quantity": item.quantity,
+                  "price": item.price
+              }
+              for item in receipt_items
+          ]
       })
 
-  return result, 200
+  return {
+      "data": result,
+      "page": page,
+      "limit": limit,
+      "total": total
+  }, 200
 
 def get_receipt(receipt_id):
   receipt = Receipt.query.get(receipt_id)

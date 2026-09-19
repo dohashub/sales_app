@@ -4,18 +4,51 @@ from models.customers import Customer
 from models.price_list_items import PriceListItem
 from sqlalchemy.exc import IntegrityError
 
-def get_all_price_lists():
-  price_lists = PriceList.query.all()
-  
-  result =[
-    {
-        "price_list_id" : price_list.price_list_id,
-        "price_list_type" : price_list.price_list_type
-    }
-    for price_list in price_lists
-  ]
+def get_all_price_lists(page, limit):
+    # Validate page
+    try:
+        page = int(page)
+    except ValueError:
+        return {"message": "page must be an integer"}, 400
 
-  return result, 200
+    if page <= 0:
+        return {"message": "page must be a positive integer"}, 400
+
+    # Validate limit
+    try:
+        limit = int(limit)
+    except ValueError:
+        return {"message": "limit must be an integer"}, 400
+
+    if limit <= 0:
+        return {"message": "limit must be a positive integer"}, 400
+
+    # Get all price lists
+    query = PriceList.query
+
+    # Count price lists
+    total = query.count()
+
+    # Calculate where this page starts
+    offset = (page - 1) * limit
+
+    # Get only the price lists for this page
+    price_lists = query.offset(offset).limit(limit).all()
+
+    result = [
+        {
+            "price_list_id": price_list.price_list_id,
+            "price_list_type": price_list.price_list_type
+        }
+        for price_list in price_lists
+    ]
+
+    return {
+        "data": result,
+        "page": page,
+        "limit": limit,
+        "total": total
+    }, 200
 
 def get_price_list(price_list_id):
   price_list = PriceList.query.get(price_list_id)

@@ -3,7 +3,7 @@ from database import db
 from sqlalchemy.exc import IntegrityError
 
 # get all products
-def get_all_products(search, product_id, min_stock, max_stock):
+def get_all_products(search, product_id, min_stock, max_stock, page, limit):
   # Clean search text
   if search:
     search = search.strip()
@@ -64,8 +64,33 @@ def get_all_products(search, product_id, min_stock, max_stock):
   if max_stock is not None:
     query = query.filter(Product.stock <= max_stock)
 
-  # Execute the query
-  products = query.all()
+  # Validate page
+  try:
+      page = int(page)
+  except ValueError:
+      return {"message": "page must be an integer"}, 400
+
+  if page <= 0:
+      return {"message": "page must be a positive integer"}, 400
+
+
+  # Validate limit
+  try:
+      limit = int(limit)
+  except ValueError:
+      return {"message": "limit must be an integer"}, 400
+
+  if limit <= 0:
+      return {"message": "limit must be a positive integer"}, 400
+
+  # Count products after applying filters
+  total = query.count()
+
+  # Calculate where this page starts
+  offset = (page - 1) * limit
+
+  # Get only the products for this page
+  products = query.offset(offset).limit(limit).all()
 
   # Convert Product objects to JSON
   result = [
@@ -78,7 +103,12 @@ def get_all_products(search, product_id, min_stock, max_stock):
       for product in products
   ]
 
-  return result, 200
+  return {
+    "data": result,
+    "page": page,
+    "limit": limit,
+    "total": total
+  }, 200
 
 # get one product
 def get_product(product_id):

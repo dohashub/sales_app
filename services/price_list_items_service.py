@@ -4,20 +4,53 @@ from models.price_list_items import PriceListItem
 from models.price_list import PriceList
 from models.products import Product
 
-def get_all_price_list_items():
-  price_list_items = PriceListItem.query.all()
-  
-  result =[
-    {
-      "id" : item.id,
-      "price_list_id" : item.price_list_id,
-      "product_id" : item.product_id,
-      "price" : item.price
-    }
-    for item in price_list_items
+def get_all_price_list_items(page, limit):
+  # Validate page
+  try:
+      page = int(page)
+  except ValueError:
+      return {"message": "page must be an integer"}, 400
+
+  if page <= 0:
+      return {"message": "page must be a positive integer"}, 400
+
+  # Validate limit
+  try:
+      limit = int(limit)
+  except ValueError:
+      return {"message": "limit must be an integer"}, 400
+
+  if limit <= 0:
+      return {"message": "limit must be a positive integer"}, 400
+
+  # Get all price list items
+  query = PriceListItem.query
+
+  # Count price list items
+  total = query.count()
+
+  # Calculate where this page starts
+  offset = (page - 1) * limit
+
+  # Get only the items for this page
+  price_list_items = query.offset(offset).limit(limit).all()
+
+  result = [
+      {
+          "id": item.id,
+          "price_list_id": item.price_list_id,
+          "product_id": item.product_id,
+          "price": item.price
+      }
+      for item in price_list_items
   ]
 
-  return result, 200
+  return {
+      "data": result,
+      "page": page,
+      "limit": limit,
+      "total": total
+  }, 200
 
 def get_price_list_item(item_id):
   item = PriceListItem.query.get(item_id)
