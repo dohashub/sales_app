@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 
 /* ---------------------------------------------------------------------
    Design tokens — white body, baby-blue accent throughout: tables,
@@ -28,36 +34,78 @@ const C = {
   okSoft: "#E9F6FC",
 };
 
+// Shown at the top-left of the page. Change this to your system's name.
+const APP_NAME = "Sales & Inventory";
+
 const TABS = [
   { key: "customers", label: "Customers" },
   { key: "products", label: "Products" },
   { key: "priceLists", label: "Price Lists" },
   { key: "priceListItems", label: "Price List Items" },
   { key: "receipts", label: "Receipts" },
+  { key: "returns", label: "Returns" },
 ];
 
+const PAGE_SIZE = 10;
+// How many rows to ask for per request while loading a full list.
+const FETCH_LIMIT = 500;
+
+const STATUS_LABELS = {
+  COMPLETED: "Completed",
+  PARTIALLY_RETURNED: "Partially returned",
+  FULLY_RETURNED: "Fully returned",
+};
+
 /* ---------------------------------------------------------------------
-   Generic data hook — GET a list, expose reload + mutate helpers
+   Data hook — loads EVERY row of a list endpoint by walking through
+   all of the API's pages, so search and filters can work across the
+   whole dataset instead of just the page on screen. Paging in the UI
+   is done locally (see usePaged).
 --------------------------------------------------------------------- */
-function useList(apiBase, path, active) {
+function useAllRows(apiBase, path, active) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [tick, setTick] = useState(0);
 
-  const reload = useCallback(() => {
-    if (!active) return;
+  const reload = useCallback(() => setTick((t) => t + 1), []);
+
+  useEffect(() => {
+    if (!active) return undefined;
+    let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(`${apiBase}${path}`)
-      .then(async (res) => {
-        const body = await res.json().catch(() => null);
-        if (!res.ok)
-          throw new Error(
-            (body && body.message) || `Couldn't load ${path} (${res.status})`,
+
+    (async () => {
+      try {
+        const all = [];
+        let page = 1;
+        let total = Infinity;
+        while (all.length < total) {
+          const res = await fetch(
+            `${apiBase}${path}?page=${page}&limit=${FETCH_LIMIT}`,
           );
-        setData(Array.isArray(body) ? body : []);
-      })
-      .catch((err) => {
+          const body = await res.json().catch(() => null);
+          if (!res.ok)
+            throw new Error(
+              (body && body.message) || `Couldn't load ${path} (${res.status})`,
+            );
+          // Backend wraps list responses as { data, page, limit, total },
+          // but tolerate a bare array too.
+          const list = Array.isArray(body)
+            ? body
+            : Array.isArray(body?.data)
+              ? body.data
+              : [];
+          all.push(...list);
+          if (Array.isArray(body) || typeof body?.total !== "number") break;
+          total = body.total;
+          if (list.length === 0) break;
+          page += 1;
+        }
+        if (!cancelled) setData(all);
+      } catch (err) {
+        if (cancelled) return;
         // Surface network-level failures ("Failed to fetch") distinctly from
         // API error responses, since the fix for each is different.
         if (err instanceof TypeError) {
@@ -67,16 +115,65 @@ function useList(apiBase, path, active) {
         } else {
           setError(err.message);
         }
-      })
-      .finally(() => setLoading(false));
-  }, [apiBase, path, active]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, path, active]);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase, path, active, tick]);
 
   return { data, loading, error, reload, setError };
+}
+
+/* Client-side paging over an already-filtered list. Jumps back to
+   page 1 whenever `resetKey` changes (search text or filters). */
+function usePaged(rows, resetKey) {
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [resetKey]);
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  return { page: safePage, setPage, pageRows };
+}
+
+/* Prev/Next pager. `page` is 1-based; `total` is the number of rows
+   that match the current search and filters. */
+function Pagination({ page, onChange, limit, total }) {
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  if (totalPages <= 1) return null;
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        gap: 10,
+        marginTop: 10,
+        fontFamily: FONT_SANS,
+      }}
+    >
+      <Btn
+        variant="ghost"
+        onClick={() => onChange(Math.max(1, page - 1))}
+        disabled={page <= 1}
+      >
+        Previous
+      </Btn>
+      <span style={{ fontSize: 12.5, color: C.inkFaint }}>
+        Page {page} of {totalPages}
+      </span>
+      <Btn
+        variant="ghost"
+        onClick={() => onChange(Math.min(totalPages, page + 1))}
+        disabled={page >= totalPages}
+      >
+        Next
+      </Btn>
+    </div>
+  );
 }
 
 async function send(apiBase, path, method, body) {
@@ -104,6 +201,72 @@ async function send(apiBase, path, method, body) {
     );
   }
   return parsed;
+}
+
+/* ---------------------------------------------------------------------
+   Search + filter helpers
+--------------------------------------------------------------------- */
+
+/* Every primitive value in a row, including nested objects and arrays
+   (e.g. receipt items), so search covers any field the API returns. */
+function collectValues(v, out = []) {
+  if (v === null || v === undefined) return out;
+  if (Array.isArray(v)) v.forEach((x) => collectValues(x, out));
+  else if (typeof v === "object")
+    Object.values(v).forEach((x) => collectValues(x, out));
+  else out.push(v);
+  return out;
+}
+
+/* Every space-separated word must appear somewhere in the row (in any
+   field, in any order). `fields` can be values, arrays, or nested arrays. */
+function searchMatch(search, ...fields) {
+  const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+  const haystack = fields
+    .flat(Infinity)
+    .map((f) => String(f ?? "").toLowerCase())
+    .join("\u0001");
+  return tokens.every((t) => haystack.includes(t));
+}
+
+function inNumberRange(value, from, to) {
+  const n = Number(value);
+  if (from !== "" && !(n >= Number(from))) return false;
+  if (to !== "" && !(n <= Number(to))) return false;
+  return true;
+}
+
+/* Normalises API dates ("2025-03-04", "2025-03-04T10:15:00", or anything
+   Date can parse) to a YYYY-MM-DD key for comparing against date inputs. */
+function dateKey(value) {
+  if (!value) return "";
+  const s = String(value);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function inDateRange(value, from, to) {
+  if (!from && !to) return true;
+  const k = dateKey(value);
+  if (!k) return false;
+  if (from && k < from) return false;
+  if (to && k > to) return false;
+  return true;
+}
+
+function countActive(filters) {
+  return Object.values(filters).filter((v) => v !== "").length;
+}
+
+function emptyText({ loading, all, shown, noun, hint }) {
+  if (loading && all === 0) return "Loading…";
+  if (all === 0) return `No ${noun} yet — ${hint}`;
+  if (shown === 0) return `No ${noun} match your search or filters.`;
+  return null;
 }
 
 /* ---------------------------------------------------------------------
@@ -232,13 +395,13 @@ function Btn({ variant = "primary", style, ...props }) {
   );
 }
 
-/* Simple client-side search box: filters the already-loaded list
-   instantly, no extra requests to a backend that may be flaky.
-   Styled as a filled blue pill with a search icon so it reads as
-   its own thing rather than blending into the form fields above. */
+/* Search box. The text is matched against every field of every row
+   (across all pages) by the panel that owns it. Styled as a filled
+   blue pill with a search icon so it reads as its own thing rather
+   than blending into the form fields above. */
 function SearchInput({ value, onChange, placeholder }) {
   return (
-    <div style={{ position: "relative", width: 260, maxWidth: "100%" }}>
+    <div style={{ position: "relative", width: 300, maxWidth: "100%" }}>
       <span
         style={{
           position: "absolute",
@@ -269,6 +432,7 @@ function SearchInput({ value, onChange, placeholder }) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        aria-label={placeholder}
         style={{
           ...inputStyle,
           width: "100%",
@@ -305,26 +469,217 @@ function SearchInput({ value, onChange, placeholder }) {
   );
 }
 
-function Toolbar({ search, onSearch, placeholder, shown, total }) {
+function Toolbar({ search, onSearch, placeholder, shown, total, children }) {
   return (
     <div
       style={{
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: 10,
+        marginBottom: 12,
         gap: 12,
         flexWrap: "wrap",
       }}
     >
-      <SearchInput
-        value={search}
-        onChange={onSearch}
-        placeholder={placeholder}
-      />
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <SearchInput
+          value={search}
+          onChange={onSearch}
+          placeholder={placeholder}
+        />
+        {children}
+      </div>
       <span style={{ fontSize: 12, color: C.inkFaint, fontFamily: FONT_SANS }}>
         {shown} of {total}
       </span>
+    </div>
+  );
+}
+
+/* Filter icon that sits beside the search box and opens a small popover
+   with the panel's filter controls. A badge on the icon shows how many
+   filters are set. Closes on outside click or Escape. */
+function Filters({ children, activeCount, onClear }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const hasActive = activeCount > 0;
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label={hasActive ? `Filters (${activeCount} active)` : "Filters"}
+        aria-expanded={open}
+        title="Filters"
+        style={{
+          position: "relative",
+          width: 36,
+          height: 36,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: 999,
+          cursor: "pointer",
+          border: `1.5px solid ${hasActive || open ? C.accent : C.accentSoft}`,
+          background: hasActive ? C.accent : C.accentSoft,
+          color: hasActive ? "#fff" : C.accentText,
+          padding: 0,
+        }}
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+        {hasActive && (
+          <span
+            style={{
+              position: "absolute",
+              top: -5,
+              right: -5,
+              minWidth: 16,
+              height: 16,
+              padding: "0 4px",
+              boxSizing: "border-box",
+              borderRadius: 999,
+              background: C.blue,
+              color: "#fff",
+              border: "2px solid #fff",
+              fontFamily: FONT_SANS,
+              fontSize: 10,
+              fontWeight: 700,
+              lineHeight: "12px",
+              textAlign: "center",
+            }}
+          >
+            {activeCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Filters"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            left: 0,
+            zIndex: 30,
+            width: 300,
+            maxWidth: "calc(100vw - 40px)",
+            boxSizing: "border-box",
+            background: C.card,
+            border: `1px solid ${C.line}`,
+            borderRadius: 8,
+            padding: 14,
+            boxShadow: "0 8px 24px rgba(24, 24, 27, 0.10)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: FONT_SANS,
+                fontSize: 13,
+                fontWeight: 600,
+                color: C.ink,
+              }}
+            >
+              Filters
+            </span>
+            <Btn
+              type="button"
+              variant="ghost"
+              onClick={onClear}
+              disabled={!hasActive}
+              style={{
+                padding: "3px 10px",
+                fontSize: 12,
+                opacity: hasActive ? 1 : 0.5,
+                cursor: hasActive ? "pointer" : "default",
+              }}
+            >
+              Clear all
+            </Btn>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {children}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* A "from – to" pair of inputs, for numbers or dates. */
+function RangeField({ label, type = "number", from, to, onFrom, onTo }) {
+  const isNumber = type === "number";
+  const inputProps = {
+    type,
+    min: isNumber ? "0" : undefined,
+    style: { flex: 1, minWidth: 0 },
+  };
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        fontFamily: FONT_SANS,
+      }}
+    >
+      <span style={{ fontSize: 11.5, color: C.inkFaint, letterSpacing: 0.2 }}>
+        {label}
+      </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <TextInput
+          {...inputProps}
+          aria-label={`${label}, from`}
+          placeholder={isNumber ? "Min" : undefined}
+          value={from}
+          onChange={(e) => onFrom(e.target.value)}
+        />
+        <span style={{ color: C.inkFaint }}>–</span>
+        <TextInput
+          {...inputProps}
+          aria-label={`${label}, to`}
+          placeholder={isNumber ? "Max" : undefined}
+          value={to}
+          onChange={(e) => onTo(e.target.value)}
+        />
+      </div>
     </div>
   );
 }
@@ -469,19 +824,34 @@ function money(n) {
   return Number(n).toLocaleString();
 }
 
-function matches(search, ...fields) {
-  const q = search.trim().toLowerCase();
-  if (!q) return true;
-  return fields.some((f) =>
-    String(f ?? "")
-      .toLowerCase()
-      .includes(q),
+function StatusBadge({ status }) {
+  const styles = {
+    COMPLETED: { bg: C.accentSoft, fg: C.accentText },
+    PARTIALLY_RETURNED: { bg: "#FFF6E5", fg: "#9A6B00" },
+    FULLY_RETURNED: { bg: C.dangerSoft, fg: C.danger },
+  };
+  const s = styles[status] || { bg: C.surface, fg: C.inkFaint };
+  return (
+    <span
+      style={{
+        fontFamily: FONT_SANS,
+        fontSize: 12,
+        padding: "2px 8px",
+        borderRadius: 3,
+        background: s.bg,
+        color: s.fg,
+      }}
+    >
+      {STATUS_LABELS[status] || status || "—"}
+    </span>
   );
 }
 
 /* ---------------------------------------------------------------------
    Customers
 --------------------------------------------------------------------- */
+const EMPTY_CUSTOMER_FILTERS = { price_list_id: "" };
+
 function CustomersPanel({ apiBase, active }) {
   const {
     data: customers,
@@ -489,23 +859,46 @@ function CustomersPanel({ apiBase, active }) {
     error,
     reload,
     setError,
-  } = useList(apiBase, "/customers", active);
-  const { data: priceLists } = useList(apiBase, "/price-list", active);
+  } = useAllRows(apiBase, "/customers", active);
+  const { data: priceLists } = useAllRows(apiBase, "/price-list", active);
+
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState(EMPTY_CUSTOMER_FILTERS);
+  const setF = (patch) => setFilters((f) => ({ ...f, ...patch }));
 
   const [form, setForm] = useState({ name: "", price_list_id: "" });
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ name: "", price_list_id: "" });
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
-  const [search, setSearch] = useState("");
 
-  const priceListLabel = (id) => {
-    const pl = priceLists.find((p) => p.price_list_id === id);
-    return pl ? pl.price_list_type : `#${id}`;
-  };
+  const priceListById = useMemo(
+    () => new Map(priceLists.map((p) => [p.price_list_id, p])),
+    [priceLists],
+  );
+  const priceListLabel = (id) =>
+    priceListById.get(id)?.price_list_type ?? `#${id}`;
 
-  const filtered = customers.filter((c) =>
-    matches(search, c.customer_id, c.name, priceListLabel(c.price_list_id)),
+  const filtered = useMemo(
+    () =>
+      customers.filter((c) => {
+        if (
+          filters.price_list_id &&
+          String(c.price_list_id) !== filters.price_list_id
+        )
+          return false;
+        return searchMatch(
+          search,
+          collectValues(c),
+          priceListLabel(c.price_list_id),
+        );
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [customers, priceListById, search, filters],
+  );
+  const { page, setPage, pageRows } = usePaged(
+    filtered,
+    JSON.stringify([search, filters]),
   );
 
   async function handleAdd(e) {
@@ -620,7 +1013,26 @@ function CustomersPanel({ apiBase, active }) {
         placeholder="Search customers..."
         shown={filtered.length}
         total={customers.length}
-      />
+      >
+        <Filters
+          activeCount={countActive(filters)}
+          onClear={() => setFilters(EMPTY_CUSTOMER_FILTERS)}
+        >
+          <Field label="Price list">
+            <Select
+              value={filters.price_list_id}
+              onChange={(e) => setF({ price_list_id: e.target.value })}
+            >
+              <option value="">All</option>
+              {priceLists.map((p) => (
+                <option key={p.price_list_id} value={p.price_list_id}>
+                  {p.price_list_type}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </Filters>
+      </Toolbar>
 
       <Table
         columns={[
@@ -629,15 +1041,15 @@ function CustomersPanel({ apiBase, active }) {
           { label: "Price list", align: "left" },
           { label: "", align: "right" },
         ]}
-        empty={
-          !loading && customers.length === 0
-            ? "No customers yet — add one above."
-            : !loading && filtered.length === 0
-              ? "No customers match your search."
-              : null
-        }
+        empty={emptyText({
+          loading,
+          all: customers.length,
+          shown: filtered.length,
+          noun: "customers",
+          hint: "add one above.",
+        })}
       >
-        {filtered.map((c) => {
+        {pageRows.map((c) => {
           const isEditing = editingId === c.customer_id;
           return (
             <tr key={c.customer_id}>
@@ -721,6 +1133,12 @@ function CustomersPanel({ apiBase, active }) {
           );
         })}
       </Table>
+      <Pagination
+        page={page}
+        onChange={setPage}
+        limit={PAGE_SIZE}
+        total={filtered.length}
+      />
     </Panel>
   );
 }
@@ -728,6 +1146,8 @@ function CustomersPanel({ apiBase, active }) {
 /* ---------------------------------------------------------------------
    Products
 --------------------------------------------------------------------- */
+const EMPTY_PRODUCT_FILTERS = { status: "", stockFrom: "", stockTo: "" };
+
 function ProductsPanel({ apiBase, active }) {
   const {
     data: products,
@@ -735,7 +1155,12 @@ function ProductsPanel({ apiBase, active }) {
     error,
     reload,
     setError,
-  } = useList(apiBase, "/products", active);
+  } = useAllRows(apiBase, "/products", active);
+
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState(EMPTY_PRODUCT_FILTERS);
+  const setF = (patch) => setFilters((f) => ({ ...f, ...patch }));
+
   const [form, setForm] = useState({ name: "", stock: "" });
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({
@@ -744,10 +1169,28 @@ function ProductsPanel({ apiBase, active }) {
     is_active: 1,
   });
   const [busy, setBusy] = useState(false);
-  const [search, setSearch] = useState("");
 
-  const filtered = products.filter((p) =>
-    matches(search, p.product_id, p.name),
+  const filtered = useMemo(
+    () =>
+      products.filter((p) => {
+        if (
+          filters.status !== "" &&
+          String(Number(p.is_active)) !== filters.status
+        )
+          return false;
+        if (!inNumberRange(p.stock, filters.stockFrom, filters.stockTo))
+          return false;
+        return searchMatch(
+          search,
+          collectValues(p),
+          p.is_active ? "Active" : "Inactive",
+        );
+      }),
+    [products, search, filters],
+  );
+  const { page, setPage, pageRows } = usePaged(
+    filtered,
+    JSON.stringify([search, filters]),
   );
 
   async function handleAdd(e) {
@@ -859,7 +1302,30 @@ function ProductsPanel({ apiBase, active }) {
         placeholder="Search products..."
         shown={filtered.length}
         total={products.length}
-      />
+      >
+        <Filters
+          activeCount={countActive(filters)}
+          onClear={() => setFilters(EMPTY_PRODUCT_FILTERS)}
+        >
+          <Field label="Status">
+            <Select
+              value={filters.status}
+              onChange={(e) => setF({ status: e.target.value })}
+            >
+              <option value="">All</option>
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </Select>
+          </Field>
+          <RangeField
+            label="Stock"
+            from={filters.stockFrom}
+            to={filters.stockTo}
+            onFrom={(v) => setF({ stockFrom: v })}
+            onTo={(v) => setF({ stockTo: v })}
+          />
+        </Filters>
+      </Toolbar>
 
       <Table
         columns={[
@@ -869,15 +1335,15 @@ function ProductsPanel({ apiBase, active }) {
           { label: "Active", align: "left" },
           { label: "", align: "right" },
         ]}
-        empty={
-          !loading && products.length === 0
-            ? "No products yet — add one above."
-            : !loading && filtered.length === 0
-              ? "No products match your search."
-              : null
-        }
+        empty={emptyText({
+          loading,
+          all: products.length,
+          shown: filtered.length,
+          noun: "products",
+          hint: "add one above.",
+        })}
       >
-        {filtered.map((p) => {
+        {pageRows.map((p) => {
           const isEditing = editingId === p.product_id;
           return (
             <tr key={p.product_id}>
@@ -977,6 +1443,12 @@ function ProductsPanel({ apiBase, active }) {
           );
         })}
       </Table>
+      <Pagination
+        page={page}
+        onChange={setPage}
+        limit={PAGE_SIZE}
+        total={filtered.length}
+      />
     </Panel>
   );
 }
@@ -984,6 +1456,8 @@ function ProductsPanel({ apiBase, active }) {
 /* ---------------------------------------------------------------------
    Price Lists
 --------------------------------------------------------------------- */
+const EMPTY_PRICE_LIST_FILTERS = { usage: "" };
+
 function PriceListsPanel({ apiBase, active }) {
   const {
     data: lists,
@@ -991,7 +1465,10 @@ function PriceListsPanel({ apiBase, active }) {
     error,
     reload,
     setError,
-  } = useList(apiBase, "/price-list", active);
+  } = useAllRows(apiBase, "/price-list", active);
+  // Used by the "In use / Unused" filter.
+  const { data: customers } = useAllRows(apiBase, "/customers", active);
+
   const [form, setForm] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState("");
@@ -999,9 +1476,28 @@ function PriceListsPanel({ apiBase, active }) {
   const [replacementId, setReplacementId] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState(EMPTY_PRICE_LIST_FILTERS);
+  const setF = (patch) => setFilters((f) => ({ ...f, ...patch }));
 
-  const filtered = lists.filter((pl) =>
-    matches(search, pl.price_list_id, pl.price_list_type),
+  const usedIds = useMemo(
+    () => new Set(customers.map((c) => c.price_list_id)),
+    [customers],
+  );
+
+  const filtered = useMemo(
+    () =>
+      lists.filter((pl) => {
+        if (filters.usage === "used" && !usedIds.has(pl.price_list_id))
+          return false;
+        if (filters.usage === "unused" && usedIds.has(pl.price_list_id))
+          return false;
+        return searchMatch(search, collectValues(pl));
+      }),
+    [lists, usedIds, search, filters],
+  );
+  const { page, setPage, pageRows } = usePaged(
+    filtered,
+    JSON.stringify([search, filters]),
   );
 
   async function handleAdd(e) {
@@ -1091,7 +1587,23 @@ function PriceListsPanel({ apiBase, active }) {
         placeholder="Search price lists..."
         shown={filtered.length}
         total={lists.length}
-      />
+      >
+        <Filters
+          activeCount={countActive(filters)}
+          onClear={() => setFilters(EMPTY_PRICE_LIST_FILTERS)}
+        >
+          <Field label="Usage">
+            <Select
+              value={filters.usage}
+              onChange={(e) => setF({ usage: e.target.value })}
+            >
+              <option value="">All</option>
+              <option value="used">Has customers</option>
+              <option value="unused">No customers</option>
+            </Select>
+          </Field>
+        </Filters>
+      </Toolbar>
 
       <Table
         columns={[
@@ -1099,15 +1611,15 @@ function PriceListsPanel({ apiBase, active }) {
           { label: "Type", align: "left" },
           { label: "", align: "right" },
         ]}
-        empty={
-          !loading && lists.length === 0
-            ? "No price lists yet — add one above."
-            : !loading && filtered.length === 0
-              ? "No price lists match your search."
-              : null
-        }
+        empty={emptyText({
+          loading,
+          all: lists.length,
+          shown: filtered.length,
+          noun: "price lists",
+          hint: "add one above.",
+        })}
       >
-        {filtered.map((pl) => {
+        {pageRows.map((pl) => {
           const isEditing = editingId === pl.price_list_id;
           const isDeleting = deletingId === pl.price_list_id;
           const otherLists = lists.filter(
@@ -1231,6 +1743,12 @@ function PriceListsPanel({ apiBase, active }) {
           );
         })}
       </Table>
+      <Pagination
+        page={page}
+        onChange={setPage}
+        limit={PAGE_SIZE}
+        total={filtered.length}
+      />
     </Panel>
   );
 }
@@ -1238,6 +1756,13 @@ function PriceListsPanel({ apiBase, active }) {
 /* ---------------------------------------------------------------------
    Price List Items
 --------------------------------------------------------------------- */
+const EMPTY_ITEM_FILTERS = {
+  price_list_id: "",
+  product_id: "",
+  priceFrom: "",
+  priceTo: "",
+};
+
 function PriceListItemsPanel({ apiBase, active }) {
   const {
     data: items,
@@ -1245,9 +1770,10 @@ function PriceListItemsPanel({ apiBase, active }) {
     error,
     reload,
     setError,
-  } = useList(apiBase, "/price-list-items", active);
-  const { data: priceLists } = useList(apiBase, "/price-list", active);
-  const { data: products } = useList(apiBase, "/products", active);
+  } = useAllRows(apiBase, "/price-list-items", active);
+  // Also used for the dropdowns and for looking up labels by id.
+  const { data: priceLists } = useAllRows(apiBase, "/price-list", active);
+  const { data: products } = useAllRows(apiBase, "/products", active);
 
   const [form, setForm] = useState({
     price_list_id: "",
@@ -1258,20 +1784,46 @@ function PriceListItemsPanel({ apiBase, active }) {
   const [editPrice, setEditPrice] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState(EMPTY_ITEM_FILTERS);
+  const setF = (patch) => setFilters((f) => ({ ...f, ...patch }));
 
-  const plLabel = (id) =>
-    priceLists.find((p) => p.price_list_id === id)?.price_list_type ?? `#${id}`;
-  const prodLabel = (id) =>
-    products.find((p) => p.product_id === id)?.name ?? `#${id}`;
+  const priceListById = useMemo(
+    () => new Map(priceLists.map((p) => [p.price_list_id, p])),
+    [priceLists],
+  );
+  const productById = useMemo(
+    () => new Map(products.map((p) => [p.product_id, p])),
+    [products],
+  );
+  const plLabel = (id) => priceListById.get(id)?.price_list_type ?? `#${id}`;
+  const prodLabel = (id) => productById.get(id)?.name ?? `#${id}`;
 
-  const filtered = items.filter((it) =>
-    matches(
-      search,
-      it.id,
-      plLabel(it.price_list_id),
-      prodLabel(it.product_id),
-      it.price,
-    ),
+  const filtered = useMemo(
+    () =>
+      items.filter((it) => {
+        if (
+          filters.price_list_id &&
+          String(it.price_list_id) !== filters.price_list_id
+        )
+          return false;
+        if (filters.product_id && String(it.product_id) !== filters.product_id)
+          return false;
+        if (!inNumberRange(it.price, filters.priceFrom, filters.priceTo))
+          return false;
+        return searchMatch(
+          search,
+          collectValues(it),
+          plLabel(it.price_list_id),
+          prodLabel(it.product_id),
+          money(it.price),
+        );
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, priceListById, productById, search, filters],
+  );
+  const { page, setPage, pageRows } = usePaged(
+    filtered,
+    JSON.stringify([search, filters]),
   );
 
   async function handleAdd(e) {
@@ -1391,10 +1943,49 @@ function PriceListItemsPanel({ apiBase, active }) {
       <Toolbar
         search={search}
         onSearch={setSearch}
-        placeholder="Search by product or list..."
+        placeholder="Search price list items..."
         shown={filtered.length}
         total={items.length}
-      />
+      >
+        <Filters
+          activeCount={countActive(filters)}
+          onClear={() => setFilters(EMPTY_ITEM_FILTERS)}
+        >
+          <Field label="Price list">
+            <Select
+              value={filters.price_list_id}
+              onChange={(e) => setF({ price_list_id: e.target.value })}
+            >
+              <option value="">All</option>
+              {priceLists.map((p) => (
+                <option key={p.price_list_id} value={p.price_list_id}>
+                  {p.price_list_type}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Product">
+            <Select
+              value={filters.product_id}
+              onChange={(e) => setF({ product_id: e.target.value })}
+            >
+              <option value="">All</option>
+              {products.map((p) => (
+                <option key={p.product_id} value={p.product_id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <RangeField
+            label="Price"
+            from={filters.priceFrom}
+            to={filters.priceTo}
+            onFrom={(v) => setF({ priceFrom: v })}
+            onTo={(v) => setF({ priceTo: v })}
+          />
+        </Filters>
+      </Toolbar>
 
       <Table
         columns={[
@@ -1404,15 +1995,15 @@ function PriceListItemsPanel({ apiBase, active }) {
           { label: "Price", align: "right" },
           { label: "", align: "right" },
         ]}
-        empty={
-          !loading && items.length === 0
-            ? "No price list items yet — add one above."
-            : !loading && filtered.length === 0
-              ? "No items match your search."
-              : null
-        }
+        empty={emptyText({
+          loading,
+          all: items.length,
+          shown: filtered.length,
+          noun: "price list items",
+          hint: "add one above.",
+        })}
       >
-        {filtered.map((it) => {
+        {pageRows.map((it) => {
           const isEditing = editingId === it.id;
           return (
             <tr key={it.id}>
@@ -1477,6 +2068,12 @@ function PriceListItemsPanel({ apiBase, active }) {
           );
         })}
       </Table>
+      <Pagination
+        page={page}
+        onChange={setPage}
+        limit={PAGE_SIZE}
+        total={filtered.length}
+      />
     </Panel>
   );
 }
@@ -1484,6 +2081,16 @@ function PriceListItemsPanel({ apiBase, active }) {
 /* ---------------------------------------------------------------------
    Receipts
 --------------------------------------------------------------------- */
+const EMPTY_RECEIPT_FILTERS = {
+  customer_id: "",
+  status: "",
+  product_id: "",
+  dateFrom: "",
+  dateTo: "",
+  totalFrom: "",
+  totalTo: "",
+};
+
 function ReceiptsPanel({ apiBase, active }) {
   const {
     data: receipts,
@@ -1491,9 +2098,9 @@ function ReceiptsPanel({ apiBase, active }) {
     error,
     reload,
     setError,
-  } = useList(apiBase, "/receipts", active);
-  const { data: customers } = useList(apiBase, "/customers", active);
-  const { data: products } = useList(apiBase, "/products", active);
+  } = useAllRows(apiBase, "/receipts", active);
+  const { data: customers } = useAllRows(apiBase, "/customers", active);
+  const { data: products } = useAllRows(apiBase, "/products", active);
 
   const [customerId, setCustomerId] = useState("");
   const [lines, setLines] = useState([{ product_id: "", quantity: "1" }]);
@@ -1501,20 +2108,55 @@ function ReceiptsPanel({ apiBase, active }) {
   const [notice, setNotice] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState(EMPTY_RECEIPT_FILTERS);
+  const setF = (patch) => setFilters((f) => ({ ...f, ...patch }));
 
-  const customerLabel = (id) =>
-    customers.find((c) => c.customer_id === id)?.name ?? `#${id}`;
-  const productLabel = (id) =>
-    products.find((p) => p.product_id === id)?.name ?? `#${id}`;
+  const customerById = useMemo(
+    () => new Map(customers.map((c) => [c.customer_id, c])),
+    [customers],
+  );
+  const productById = useMemo(
+    () => new Map(products.map((p) => [p.product_id, p])),
+    [products],
+  );
+  const customerLabel = (id) => customerById.get(id)?.name ?? `#${id}`;
+  const productLabel = (id) => productById.get(id)?.name ?? `#${id}`;
 
-  const filtered = receipts.filter((r) =>
-    matches(
-      search,
-      r["receipt#"],
-      customerLabel(r.customer_id),
-      r.date,
-      r.total,
-    ),
+  const filtered = useMemo(
+    () =>
+      receipts.filter((r) => {
+        if (
+          filters.customer_id &&
+          String(r.customer_id) !== filters.customer_id
+        )
+          return false;
+        if (filters.status && r.status !== filters.status) return false;
+        if (
+          filters.product_id &&
+          !(r.items || []).some(
+            (it) => String(it.product_id) === filters.product_id,
+          )
+        )
+          return false;
+        if (!inDateRange(r.date, filters.dateFrom, filters.dateTo))
+          return false;
+        if (!inNumberRange(r.total, filters.totalFrom, filters.totalTo))
+          return false;
+        return searchMatch(
+          search,
+          collectValues(r),
+          customerLabel(r.customer_id),
+          (r.items || []).map((it) => productLabel(it.product_id)),
+          STATUS_LABELS[r.status],
+          money(r.total),
+        );
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [receipts, customerById, productById, search, filters],
+  );
+  const { page, setPage, pageRows } = usePaged(
+    filtered,
+    JSON.stringify([search, filters]),
   );
 
   function updateLine(idx, patch) {
@@ -1665,7 +2307,67 @@ function ReceiptsPanel({ apiBase, active }) {
         placeholder="Search receipts..."
         shown={filtered.length}
         total={receipts.length}
-      />
+      >
+        <Filters
+          activeCount={countActive(filters)}
+          onClear={() => setFilters(EMPTY_RECEIPT_FILTERS)}
+        >
+          <Field label="Customer">
+            <Select
+              value={filters.customer_id}
+              onChange={(e) => setF({ customer_id: e.target.value })}
+            >
+              <option value="">All</option>
+              {customers.map((c) => (
+                <option key={c.customer_id} value={c.customer_id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Status">
+            <Select
+              value={filters.status}
+              onChange={(e) => setF({ status: e.target.value })}
+            >
+              <option value="">All</option>
+              {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Contains product">
+            <Select
+              value={filters.product_id}
+              onChange={(e) => setF({ product_id: e.target.value })}
+            >
+              <option value="">Any</option>
+              {products.map((p) => (
+                <option key={p.product_id} value={p.product_id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <RangeField
+            label="Date"
+            type="date"
+            from={filters.dateFrom}
+            to={filters.dateTo}
+            onFrom={(v) => setF({ dateFrom: v })}
+            onTo={(v) => setF({ dateTo: v })}
+          />
+          <RangeField
+            label="Total"
+            from={filters.totalFrom}
+            to={filters.totalTo}
+            onFrom={(v) => setF({ totalFrom: v })}
+            onTo={(v) => setF({ totalTo: v })}
+          />
+        </Filters>
+      </Toolbar>
 
       <Table
         columns={[
@@ -1673,17 +2375,18 @@ function ReceiptsPanel({ apiBase, active }) {
           { label: "Customer", align: "left" },
           { label: "Date", align: "left" },
           { label: "Total", align: "right" },
+          { label: "Status", align: "left" },
           { label: "", align: "right" },
         ]}
-        empty={
-          !loading && receipts.length === 0
-            ? "No receipts yet — create one above."
-            : !loading && filtered.length === 0
-              ? "No receipts match your search."
-              : null
-        }
+        empty={emptyText({
+          loading,
+          all: receipts.length,
+          shown: filtered.length,
+          noun: "receipts",
+          hint: "create one above.",
+        })}
       >
-        {filtered.map((r) => {
+        {pageRows.map((r) => {
           const rn = r["receipt#"];
           const isOpen = openId === rn;
           return (
@@ -1697,10 +2400,528 @@ function ReceiptsPanel({ apiBase, active }) {
                 <Td mono align="right">
                   {money(r.total)}
                 </Td>
+                <Td>
+                  <StatusBadge status={r.status} />
+                </Td>
                 <Td align="right" width={120}>
                   <Btn
                     variant="ghost"
                     onClick={() => setOpenId(isOpen ? null : rn)}
+                  >
+                    {isOpen ? "Hide items" : "Show items"}
+                  </Btn>
+                </Td>
+              </tr>
+              {isOpen && (
+                <tr>
+                  <Td colSpan={6}>
+                    <div style={{ padding: "6px 4px 10px" }}>
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontFamily: FONT_SANS,
+                        }}
+                      >
+                        <thead>
+                          <tr>
+                            <th
+                              style={{
+                                textAlign: "left",
+                                padding: "4px 8px",
+                                fontSize: 11,
+                                color: C.accentText,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Item
+                            </th>
+                            <th
+                              style={{
+                                textAlign: "right",
+                                padding: "4px 8px",
+                                fontSize: 11,
+                                color: C.accentText,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Quantity
+                            </th>
+                            <th
+                              style={{
+                                textAlign: "right",
+                                padding: "4px 8px",
+                                fontSize: 11,
+                                color: C.accentText,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Price
+                            </th>
+                            <th
+                              style={{
+                                textAlign: "right",
+                                padding: "4px 8px",
+                                fontSize: 11,
+                                color: C.accentText,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Subtotal
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(r.items || []).map((it, i) => (
+                            <tr key={i}>
+                              <td
+                                style={{
+                                  padding: "5px 8px",
+                                  fontSize: 13,
+                                  color: C.ink,
+                                }}
+                              >
+                                {productLabel(it.product_id)}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "5px 8px",
+                                  fontSize: 13,
+                                  color: C.ink,
+                                  textAlign: "right",
+                                  fontFamily: FONT_MONO,
+                                }}
+                              >
+                                {it.quantity}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "5px 8px",
+                                  fontSize: 13,
+                                  color: C.ink,
+                                  textAlign: "right",
+                                  fontFamily: FONT_MONO,
+                                }}
+                              >
+                                {money(it.price)}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "5px 8px",
+                                  fontSize: 13,
+                                  color: C.ink,
+                                  textAlign: "right",
+                                  fontFamily: FONT_MONO,
+                                }}
+                              >
+                                {money(it.price * it.quantity)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td
+                              colSpan={3}
+                              style={{
+                                padding: "7px 8px",
+                                textAlign: "right",
+                                fontWeight: 700,
+                                color: C.ink,
+                                borderTop: `1px solid ${C.line}`,
+                              }}
+                            >
+                              Total
+                            </td>
+                            <td
+                              style={{
+                                padding: "7px 8px",
+                                textAlign: "right",
+                                fontWeight: 700,
+                                color: C.ink,
+                                fontFamily: FONT_MONO,
+                                borderTop: `1px solid ${C.line}`,
+                              }}
+                            >
+                              {money(r.total)}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </Td>
+                </tr>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </Table>
+      <Pagination
+        page={page}
+        onChange={setPage}
+        limit={PAGE_SIZE}
+        total={filtered.length}
+      />
+    </Panel>
+  );
+}
+
+/* ---------------------------------------------------------------------
+   Returns
+   Route shape confirmed: GET/POST /returns and GET /returns/<id>,
+   with POST taking { receipt_no, items }.
+--------------------------------------------------------------------- */
+const EMPTY_RETURN_FILTERS = {
+  receipt_no: "",
+  customer_id: "",
+  product_id: "",
+  dateFrom: "",
+  dateTo: "",
+  totalFrom: "",
+  totalTo: "",
+};
+
+function ReturnsPanel({ apiBase, active }) {
+  const {
+    data: returns,
+    loading,
+    error,
+    reload,
+    setError,
+  } = useAllRows(apiBase, "/returns", active);
+  const { data: receipts } = useAllRows(apiBase, "/receipts", active);
+  const { data: customers } = useAllRows(apiBase, "/customers", active);
+  const { data: products } = useAllRows(apiBase, "/products", active);
+
+  const [receiptNo, setReceiptNo] = useState("");
+  const [lines, setLines] = useState([{ product_id: "", quantity: "1" }]);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [openId, setOpenId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState(EMPTY_RETURN_FILTERS);
+  const setF = (patch) => setFilters((f) => ({ ...f, ...patch }));
+
+  const customerById = useMemo(
+    () => new Map(customers.map((c) => [c.customer_id, c])),
+    [customers],
+  );
+  const productById = useMemo(
+    () => new Map(products.map((p) => [p.product_id, p])),
+    [products],
+  );
+  const receiptByNo = useMemo(
+    () => new Map(receipts.map((r) => [Number(r["receipt#"]), r])),
+    [receipts],
+  );
+  const customerLabel = (id) => customerById.get(id)?.name ?? `#${id}`;
+  const productLabel = (id) => productById.get(id)?.name ?? `#${id}`;
+  // A return doesn't store its customer; it belongs to whoever bought on the receipt.
+  const returnCustomerId = (ret) =>
+    receiptByNo.get(Number(ret.receipt_no))?.customer_id;
+
+  const selectedReceipt = receiptByNo.get(Number(receiptNo));
+  const returnableItems = selectedReceipt?.items || [];
+
+  const filtered = useMemo(
+    () =>
+      returns.filter((r) => {
+        const custId = returnCustomerId(r);
+        if (filters.receipt_no && String(r.receipt_no) !== filters.receipt_no)
+          return false;
+        if (filters.customer_id && String(custId) !== filters.customer_id)
+          return false;
+        if (
+          filters.product_id &&
+          !(r.items || []).some(
+            (it) => String(it.product_id) === filters.product_id,
+          )
+        )
+          return false;
+        if (!inDateRange(r.date, filters.dateFrom, filters.dateTo))
+          return false;
+        if (!inNumberRange(r.total, filters.totalFrom, filters.totalTo))
+          return false;
+        return searchMatch(
+          search,
+          collectValues(r),
+          custId !== undefined ? customerLabel(custId) : "",
+          (r.items || []).map((it) => productLabel(it.product_id)),
+          money(r.total),
+        );
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [returns, receiptByNo, customerById, productById, search, filters],
+  );
+  const { page, setPage, pageRows } = usePaged(
+    filtered,
+    JSON.stringify([search, filters]),
+  );
+
+  function updateLine(idx, patch) {
+    setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  }
+  function addLine() {
+    setLines((ls) => [...ls, { product_id: "", quantity: "1" }]);
+  }
+  function removeLine(idx) {
+    setLines((ls) => ls.filter((_, i) => i !== idx));
+  }
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const items = lines
+        .filter((l) => l.product_id)
+        .map((l) => ({
+          product_id: Number(l.product_id),
+          quantity: Number(l.quantity),
+        }));
+      if (!receiptNo) throw new Error("Choose the receipt this return is for.");
+      if (items.length === 0)
+        throw new Error("Add at least one item to return.");
+      await send(apiBase, "/returns", "POST", {
+        receipt_no: Number(receiptNo),
+        items,
+      });
+      setReceiptNo("");
+      setLines([{ product_id: "", quantity: "1" }]);
+      setNotice("Return created.");
+      reload();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel
+      title="Returns"
+      subtitle="Refund items from a past receipt and restore them to stock."
+    >
+      <Banner tone="error" onDismiss={() => setError(null)}>
+        {error}
+      </Banner>
+      <Banner tone="ok" onDismiss={() => setNotice(null)}>
+        {notice}
+      </Banner>
+
+      <SectionCard>
+        <form onSubmit={handleCreate}>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              marginBottom: 14,
+              flexWrap: "wrap",
+            }}
+          >
+            <Field label="Receipt">
+              <Select
+                required
+                value={receiptNo}
+                onChange={(e) => {
+                  setReceiptNo(e.target.value);
+                  setLines([{ product_id: "", quantity: "1" }]);
+                }}
+              >
+                <option value="" disabled>
+                  Choose one
+                </option>
+                {receipts.map((r) => (
+                  <option key={r["receipt#"]} value={r["receipt#"]}>
+                    #{r["receipt#"]} — {customerLabel(r.customer_id)} —{" "}
+                    {money(r.total)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+
+          {receiptNo && returnableItems.length === 0 && (
+            <p style={{ fontSize: 13, color: C.inkFaint, marginBottom: 12 }}>
+              This receipt has no items on file.
+            </p>
+          )}
+
+          {receiptNo && returnableItems.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                marginBottom: 12,
+              }}
+            >
+              {lines.map((l, idx) => (
+                <div
+                  key={idx}
+                  style={{ display: "flex", gap: 10, alignItems: "flex-end" }}
+                >
+                  <Field label="Product">
+                    <Select
+                      value={l.product_id}
+                      onChange={(e) =>
+                        updateLine(idx, { product_id: e.target.value })
+                      }
+                    >
+                      <option value="">Choose one</option>
+                      {returnableItems.map((it) => (
+                        <option key={it.product_id} value={it.product_id}>
+                          {productLabel(it.product_id)} ({it.quantity} on
+                          receipt)
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Quantity">
+                    <TextInput
+                      type="number"
+                      min="1"
+                      style={{ width: 90 }}
+                      value={l.quantity}
+                      onChange={(e) =>
+                        updateLine(idx, { quantity: e.target.value })
+                      }
+                    />
+                  </Field>
+                  {lines.length > 1 && (
+                    <Btn
+                      type="button"
+                      variant="danger"
+                      onClick={() => removeLine(idx)}
+                    >
+                      Remove
+                    </Btn>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn
+              type="button"
+              variant="ghost"
+              onClick={addLine}
+              disabled={!receiptNo}
+            >
+              Add another item
+            </Btn>
+            <Btn type="submit" disabled={busy || !receiptNo}>
+              Create return
+            </Btn>
+          </div>
+        </form>
+      </SectionCard>
+
+      <Toolbar
+        search={search}
+        onSearch={setSearch}
+        placeholder="Search returns..."
+        shown={filtered.length}
+        total={returns.length}
+      >
+        <Filters
+          activeCount={countActive(filters)}
+          onClear={() => setFilters(EMPTY_RETURN_FILTERS)}
+        >
+          <Field label="Receipt">
+            <Select
+              value={filters.receipt_no}
+              onChange={(e) => setF({ receipt_no: e.target.value })}
+            >
+              <option value="">All</option>
+              {receipts.map((r) => (
+                <option key={r["receipt#"]} value={r["receipt#"]}>
+                  #{r["receipt#"]} — {customerLabel(r.customer_id)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Customer">
+            <Select
+              value={filters.customer_id}
+              onChange={(e) => setF({ customer_id: e.target.value })}
+            >
+              <option value="">All</option>
+              {customers.map((c) => (
+                <option key={c.customer_id} value={c.customer_id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Contains product">
+            <Select
+              value={filters.product_id}
+              onChange={(e) => setF({ product_id: e.target.value })}
+            >
+              <option value="">Any</option>
+              {products.map((p) => (
+                <option key={p.product_id} value={p.product_id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <RangeField
+            label="Date"
+            type="date"
+            from={filters.dateFrom}
+            to={filters.dateTo}
+            onFrom={(v) => setF({ dateFrom: v })}
+            onTo={(v) => setF({ dateTo: v })}
+          />
+          <RangeField
+            label="Total"
+            from={filters.totalFrom}
+            to={filters.totalTo}
+            onFrom={(v) => setF({ totalFrom: v })}
+            onTo={(v) => setF({ totalTo: v })}
+          />
+        </Filters>
+      </Toolbar>
+
+      <Table
+        columns={[
+          { label: "Return #", align: "right" },
+          { label: "Receipt #", align: "right" },
+          { label: "Date", align: "left" },
+          { label: "Total", align: "right" },
+          { label: "", align: "right" },
+        ]}
+        empty={emptyText({
+          loading,
+          all: returns.length,
+          shown: filtered.length,
+          noun: "returns",
+          hint: "create one above.",
+        })}
+      >
+        {pageRows.map((r) => {
+          const isOpen = openId === r.return_id;
+          return (
+            <React.Fragment key={r.return_id}>
+              <tr>
+                <Td mono align="right">
+                  {r.return_id}
+                </Td>
+                <Td mono align="right">
+                  {r.receipt_no}
+                </Td>
+                <Td mono>{r.date}</Td>
+                <Td mono align="right">
+                  {money(r.total)}
+                </Td>
+                <Td align="right" width={120}>
+                  <Btn
+                    variant="ghost"
+                    onClick={() => setOpenId(isOpen ? null : r.return_id)}
                   >
                     {isOpen ? "Hide items" : "Show items"}
                   </Btn>
@@ -1850,6 +3071,12 @@ function ReceiptsPanel({ apiBase, active }) {
           );
         })}
       </Table>
+      <Pagination
+        page={page}
+        onChange={setPage}
+        limit={PAGE_SIZE}
+        total={filtered.length}
+      />
     </Panel>
   );
 }
@@ -1891,13 +3118,26 @@ export default function App() {
         <header
           style={{
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             alignItems: "flex-end",
             marginBottom: 20,
             flexWrap: "wrap",
             gap: 12,
           }}
         >
+          <h1
+            style={{
+              fontFamily: FONT_SANS,
+              fontSize: 22,
+              fontWeight: 700,
+              letterSpacing: -0.2,
+              color: C.ink,
+              margin: 0,
+              lineHeight: 1.2,
+            }}
+          >
+            {APP_NAME}
+          </h1>
           <Field label="API address">
             <TextInput
               value={apiBase}
@@ -1963,6 +3203,9 @@ export default function App() {
           )}
           {tab === "receipts" && (
             <ReceiptsPanel apiBase={apiBase} active={tab === "receipts"} />
+          )}
+          {tab === "returns" && (
+            <ReturnsPanel apiBase={apiBase} active={tab === "returns"} />
           )}
         </main>
       </div>
